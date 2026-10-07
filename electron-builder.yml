@@ -1,0 +1,32 @@
+appId: com.peleusx.tiny-edit
+productName: Tiny Edit
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.png
+  identity: "-" # ad-hoc signature for personal use; no notarisation
+  hardenedRuntime: false
+  target:
+    - target: dir
+      arch: [arm64]
+  fileAssociations:
+    - ext: [md, markdown]
+      name: Markdown
+      role: Editor
+    - ext: [txt, text]
+      name: Plain Text
+      role: Editor
+# Fuses flipped only in the packaged app; the dev/E2E build keeps Node CLI inspect on for Playwright.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false

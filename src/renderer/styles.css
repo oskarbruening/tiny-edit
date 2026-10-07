@@ -1,0 +1,343 @@
+/* Tokens. The only place colours are written literally; everything else uses var(--te-*).
+   Values are the Meadow (light) theme until the theme module lands (step 9). */
+:root {
+  --te-surface: #fbf9f7;
+  --te-surface-container: #f1efeb;
+  --te-surface-container-high: #ebe8e4;
+  --te-card: #ffffff;
+  --te-line: #dfdcd6;
+  --te-ink: #1c1b1a;
+  --te-muted: #5f5e59;
+  --te-primary: #2f6f4f;
+  --te-on-primary: #ffffff;
+  --te-primary-container: #d3e8db;
+  --te-secondary-container: #dfe9e1;
+  --te-sel: #dcebe1;
+  --te-danger: #b3261e;
+  --te-danger-container: #f9dedc;
+
+  --te-syntax-heading: #2f6f4f;
+  --te-syntax-strong: #1c1b1a;
+  --te-syntax-emphasis: #1c1b1a;
+  --te-syntax-link: #1d5f8a;
+  --te-syntax-url: #5f5e59;
+  --te-syntax-inline-code: #8a4b12;
+  --te-syntax-quote: #5f5e59;
+  --te-syntax-list-marker: #2f6f4f;
+  --te-syntax-hr: #9b988f;
+  --te-syntax-marker: #9b988f;
+  --te-syntax-code-fence: #9b988f;
+  --te-syntax-html-tag: #1d5f8a;
+  --te-syntax-bracket-match: #d3e8db;
+  --te-syntax-keyword: #7c3aed;
+  --te-syntax-string: #2f6f4f;
+  --te-syntax-number: #b45309;
+  --te-syntax-comment: #8a877e;
+  --te-syntax-operator: #5f5e59;
+  --te-syntax-type: #0e7490;
+  --te-syntax-function: #1d5f8a;
+  --te-syntax-property: #7c2d12;
+  --te-syntax-variable: #1c1b1a;
+  --te-syntax-atom: #b45309;
+  --te-syntax-meta: #8a877e;
+  --te-syntax-invalid: #b3261e;
+  --te-syntax-bracket-1: #b45309;
+  --te-syntax-bracket-2: #7c3aed;
+  --te-syntax-bracket-3: #0e7490;
+
+  --te-radius-sm: 3px;
+  --te-radius-md: 6px;
+  --te-sidebar-width: 200px;
+  --te-titlebar-height: 38px;
+  --te-font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --te-font-size: 14px;
+}
+
+/* Author display values (flex, grid) would otherwise beat the UA's [hidden] rule. */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--te-surface);
+  color: var(--te-ink);
+  font: var(--te-font-size) / 1.5 var(--te-font-mono);
+  overflow: hidden;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: var(--te-sidebar-width) 1fr;
+  /* minmax(0, 1fr), not the implicit auto row: the columns must be bounded by the window,
+     otherwise the editor grows with its document and nothing scrolls. */
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+}
+
+html.sidebar-hidden .sidebar {
+  display: none;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────── */
+
+.sidebar {
+  position: relative;
+  background: var(--te-surface-container);
+  border-right: 1px solid var(--te-line);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sidebar__divider {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.sidebar__divider:hover,
+.sidebar__divider.is-dragging {
+  background: var(--te-primary-container);
+}
+
+.sidebar__header {
+  height: var(--te-titlebar-height);
+  flex: 0 0 auto;
+  -webkit-app-region: drag;
+}
+
+.sidebar__list {
+  flex: 1;
+  margin: 0;
+  padding: 4px 6px;
+  list-style: none;
+  overflow-y: auto;
+  font-size: 13px;
+  user-select: none;
+}
+
+.sidebar__item {
+  padding: 4px 8px;
+  border-radius: var(--te-radius-sm);
+  color: var(--te-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+.sidebar__item:hover {
+  background: var(--te-surface-container-high);
+}
+
+.sidebar__item.is-active {
+  background: var(--te-secondary-container);
+}
+
+.sidebar__item.is-dragging {
+  opacity: 0.4;
+}
+
+.sidebar__item.is-drop-before {
+  box-shadow: 0 -2px 0 0 var(--te-primary);
+}
+
+.sidebar__item.is-drop-after {
+  box-shadow: 0 2px 0 0 var(--te-primary);
+}
+
+.sidebar__item.is-missing {
+  color: var(--te-muted);
+  text-decoration: line-through;
+}
+
+.sidebar.is-dragover {
+  background: var(--te-primary-container);
+  box-shadow: inset 0 0 0 2px var(--te-primary);
+}
+
+.sidebar__new {
+  padding: 4px 2px;
+}
+
+.sidebar__new-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 3px 6px;
+  color: var(--te-ink);
+  background: var(--te-card);
+  border: 1px solid var(--te-primary);
+  border-radius: var(--te-radius-sm);
+  outline: none;
+}
+
+.sidebar__new-error {
+  margin-top: 3px;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--te-danger);
+}
+
+.sidebar__empty {
+  margin-top: 40%;
+  padding: 0 12px;
+  text-align: center;
+  color: var(--te-muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+/* ── Editor column ───────────────────────────────────────────────── */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.editor__titlebar {
+  height: var(--te-titlebar-height);
+  flex: 0 0 auto;
+  -webkit-app-region: drag;
+}
+
+.editor__host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.editor__host .cm-editor {
+  height: 100%;
+}
+
+/* ── Notice bar ──────────────────────────────────────────────────── */
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--te-ink);
+  background: var(--te-primary-container);
+  border-bottom: 1px solid var(--te-line);
+}
+
+.notice__text {
+  flex: 1;
+}
+
+.notice__button {
+  font: inherit;
+  padding: 2px 10px;
+  color: var(--te-ink);
+  background: var(--te-card);
+  border: 1px solid var(--te-line);
+  border-radius: var(--te-radius-sm);
+  cursor: default;
+}
+
+.notice__button:hover {
+  background: var(--te-surface-container-high);
+}
+
+/* ── Syntax classes (HighlightStyle → te-*; colours from tokens only) ─────── */
+
+.te-heading {
+  color: var(--te-syntax-heading);
+}
+.te-strong {
+  color: var(--te-syntax-strong);
+  font-weight: bold;
+}
+.te-emphasis {
+  color: var(--te-syntax-emphasis);
+  font-style: italic;
+}
+.te-strikethrough {
+  color: var(--te-muted);
+  text-decoration: line-through;
+}
+.te-link {
+  color: var(--te-syntax-link);
+}
+.te-url {
+  color: var(--te-syntax-url);
+}
+.te-inline-code {
+  color: var(--te-syntax-inline-code);
+}
+.te-quote {
+  color: var(--te-syntax-quote);
+}
+.te-list-marker {
+  color: var(--te-syntax-list-marker);
+}
+.te-hr {
+  color: var(--te-syntax-hr);
+}
+.te-marker {
+  color: var(--te-syntax-marker);
+}
+.te-code-fence {
+  color: var(--te-syntax-code-fence);
+}
+.te-html-tag {
+  color: var(--te-syntax-html-tag);
+}
+.te-keyword {
+  color: var(--te-syntax-keyword);
+}
+.te-string {
+  color: var(--te-syntax-string);
+}
+.te-number {
+  color: var(--te-syntax-number);
+}
+.te-comment {
+  color: var(--te-syntax-comment);
+}
+.te-operator {
+  color: var(--te-syntax-operator);
+}
+.te-type {
+  color: var(--te-syntax-type);
+}
+.te-function {
+  color: var(--te-syntax-function);
+}
+.te-property {
+  color: var(--te-syntax-property);
+}
+.te-variable {
+  color: var(--te-syntax-variable);
+}
+.te-atom {
+  color: var(--te-syntax-atom);
+}
+.te-meta {
+  color: var(--te-syntax-meta);
+}
+.te-invalid {
+  color: var(--te-syntax-invalid);
+}
+.te-bracket-1 {
+  color: var(--te-syntax-bracket-1);
+}
+.te-bracket-2 {
+  color: var(--te-syntax-bracket-2);
+}
+.te-bracket-3 {
+  color: var(--te-syntax-bracket-3);
+}
