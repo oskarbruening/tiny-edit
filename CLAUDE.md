@@ -55,7 +55,7 @@ From the brief and Neo's CONTRIBUTING ground rules. They beat convenience and "i
 - npm 11 gates install scripts: `package.json` `allowScripts` lists `electron`, `esbuild`, `electron-winstaller` **unpinned** (`"electron": true`). Never pin a version there (Neo's `electron@33` entry silently stopped matching after an upgrade). After adding a dependency with an install script, run `npm approve-scripts <pkg>` and then unpin the entry.
 
 - Node 26 / npm 11 locally. electron-vite for dev/build, electron-builder for packaging (ad-hoc signed `.app`, no notarisation, no auto-update, macOS only).
-- `npm run dev` (electron-vite with HMR), `npm run build`, `npm run package`, `npm run install:app` (package + copy to `/Applications`; user runs it), `npm run lint` (ESLint flat config + typescript-eslint), `npm run typecheck` (`tsc -b` over `tsconfig.node.json`, `tsconfig.web.json` and `tsconfig.e2e.json`), `npm run format` (Prettier, check in CI mode with `format:check`).
+- `npm run dev` (electron-vite with HMR), `npm run build`, `npm run package`, `npm run install:app` (package + `sudo ditto` into `/Applications`; user runs it) / `install:app:user` (`~/Applications`, no admin), `npm run lint` (ESLint flat config + typescript-eslint), `npm run typecheck` (`tsc -b` over `tsconfig.node.json`, `tsconfig.web.json` and `tsconfig.e2e.json`), `npm run format` (Prettier, check in CI mode with `format:check`).
 - `.gitattributes`: `* text=auto`; LF in the repo. `.editorconfig` matches Prettier (2-space, LF, final newline) for source files only; it does not apply to what the app does to user files.
 
 ## Documentation Maintenance
