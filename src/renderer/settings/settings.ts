@@ -1,0 +1,213 @@
+import { DEFAULT_FONT_SIZE, FONT_SIZE_STEPS, nearestFontStep, type ThemeState } from "../../shared/state";
+import type { Appearance, Theme } from "../../shared/themes";
+
+export type SettingsSnapshot = { theme: ThemeState; fontSize: number; themes: readonly Theme[] };
+
+export type SettingsHooks = {
+  onTheme: (theme: ThemeState) => void;
+  onFontSize: (px: number) => void;
+  /** After the panel closes (the app gives focus back to the editor). */
+  onClose?: () => void;
+};
+
+export const SETTINGS_TITLE = "Settings";
+
+/**
+ * The in-window Settings panel (App menu → Settings…, Cmd+,): theme mode and pick, and the
+ * five-step font-size slider. Pure DOM; the app feeds it state via `update()` and persists
+ * what the hooks report. Esc, the backdrop and Done close it.
+ */
+export class Settings {
+  private readonly panel: HTMLElement;
+  private readonly modeAuto: HTMLInputElement;
+  private readonly modeFixed: HTMLInputElement;
+  private readonly fixedSelect: HTMLSelectElement;
+  private readonly lightSelect: HTMLSelectElement;
+  private readonly darkSelect: HTMLSelectElement;
+  private readonly fontSlider: HTMLInputElement;
+  private readonly fontValue: HTMLElement;
+  private snapshot: SettingsSnapshot | null = null;
+
+  constructor(
+    private readonly host: HTMLElement,
+    private readonly hooks: SettingsHooks,
+  ) {
+    host.classList.add("settings");
+    host.hidden = true;
+    host.addEventListener("mousedown", (e) => {
+      if (e.target === host) this.close();
+    });
+    host.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        this.close();
+      }
+    });
+
+    this.panel = el("section", "settings__panel");
+    this.panel.setAttribute("role", "dialog");
+    this.panel.setAttribute("aria-modal", "true");
+    this.panel.setAttribute("aria-labelledby", "settings-title");
+    this.panel.tabIndex = -1;
+
+    const title = el("h1", "settings__title");
+    title.id = "settings-title";
+    title.textContent = SETTINGS_TITLE;
+
+    // ── Theme ──
+    this.modeAuto = radio("settings-mode", "auto");
+    this.modeFixed = radio("settings-mode", "fixed");
+    const onMode = (): void => {
+      const theme = this.snapshot?.theme;
+      if (theme) this.hooks.onTheme({ ...theme, mode: this.modeFixed.checked ? "fixed" : "auto" });
+    };
+    this.modeAuto.addEventListener("change", onMode);
+    this.modeFixed.addEventListener("change", onMode);
+
+    this.fixedSelect = el("select", "settings__select settings__fixed");
+    this.lightSelect = el("select", "settings__select settings__light");
+    this.darkSelect = el("select", "settings__select settings__dark");
+    const onPick = (key: "fixed" | "light" | "dark", select: HTMLSelectElement) => (): void => {
+      const theme = this.snapshot?.theme;
+      if (theme && select.value) this.hooks.onTheme({ ...theme, [key]: select.value });
+    };
+    this.fixedSelect.addEventListener("change", onPick("fixed", this.fixedSelect));
+    this.lightSelect.addEventListener("change", onPick("light", this.lightSelect));
+    this.darkSelect.addEventListener("change", onPick("dark", this.darkSelect));
+
+    const themeSection = section("Theme", [
+      row(labelFor(this.modeAuto, "Automatic (follows macOS)"), null),
+      row(labelText("Light", this.lightSelect), this.lightSelect, "settings__row--indent"),
+      row(labelText("Dark", this.darkSelect), this.darkSelect, "settings__row--indent"),
+      row(labelFor(this.modeFixed, "Fixed"), null),
+      row(labelText("Theme", this.fixedSelect), this.fixedSelect, "settings__row--indent"),
+    ]);
+
+    // ── Editor ──
+    this.fontSlider = el("input", "settings__font");
+    this.fontSlider.type = "range";
+    this.fontSlider.min = "1";
+    this.fontSlider.max = String(FONT_SIZE_STEPS.length);
+    this.fontSlider.step = "1";
+    this.fontSlider.addEventListener("input", () => {
+      // A range input only ever holds an integer in [min, max]; the fallback guards a hand-built DOM.
+      const px = FONT_SIZE_STEPS[Number(this.fontSlider.value) - 1] ?? DEFAULT_FONT_SIZE;
+      this.fontValue.textContent = `${px} px`;
+      this.hooks.onFontSize(px);
+    });
+    this.fontValue = el("output", "settings__font-value");
+    const fontRow = row(labelText("Font size", this.fontSlider), this.fontSlider);
+    fontRow.append(this.fontValue);
+    const editorSection = section("Editor", [fontRow]);
+
+    // ── Footer ──
+    const done = el("button", "settings__done");
+    done.type = "button";
+    done.textContent = "Done";
+    done.addEventListener("click", () => this.close());
+    const footer = el("footer", "settings__footer");
+    footer.append(done);
+
+    this.panel.append(title, themeSection, editorSection, footer);
+    host.append(this.panel);
+  }
+
+  /** Re-renders every control from the given state. Safe to call while open. */
+  update(snapshot: SettingsSnapshot): void {
+    this.snapshot = snapshot;
+    const { theme, themes, fontSize } = snapshot;
+    const auto = theme.mode === "auto";
+    this.modeAuto.checked = auto;
+    this.modeFixed.checked = !auto;
+    fillOptions(this.lightSelect, themes.filter(byAppearance("light")), theme.light);
+    fillOptions(this.darkSelect, themes.filter(byAppearance("dark")), theme.dark);
+    fillOptions(this.fixedSelect, themes, theme.fixed);
+    this.lightSelect.disabled = !auto;
+    this.darkSelect.disabled = !auto;
+    this.fixedSelect.disabled = auto;
+    const step = nearestFontStep(fontSize);
+    this.fontSlider.value = String(step + 1);
+    this.fontValue.textContent = `${FONT_SIZE_STEPS[step]} px`;
+  }
+
+  open(): void {
+    if (!this.host.hidden) return;
+    this.host.hidden = false;
+    this.panel.focus();
+  }
+
+  close(): void {
+    if (this.host.hidden) return;
+    this.host.hidden = true;
+    this.hooks.onClose?.();
+  }
+
+  toggle(): void {
+    if (this.host.hidden) this.open();
+    else this.close();
+  }
+
+  get visible(): boolean {
+    return !this.host.hidden;
+  }
+}
+
+const byAppearance = (appearance: Appearance) => (t: Theme) => t.appearance === appearance;
+
+/** Same wording as the View → Theme menu. */
+export const themeLabel = (t: Theme): string => (t.builtin ? t.name : `${t.name} (custom)`);
+
+function fillOptions(select: HTMLSelectElement, themes: readonly Theme[], current: string): void {
+  select.replaceChildren(
+    ...themes.map((t) => {
+      const o = document.createElement("option");
+      o.value = t.id;
+      o.textContent = themeLabel(t);
+      return o;
+    }),
+  );
+  // A current id that is not in the list (deleted user theme) must not silently pick the first entry.
+  if (themes.some((t) => t.id === current)) select.value = current;
+  else select.selectedIndex = -1;
+}
+
+let uid = 0;
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  node.className = className;
+  return node;
+}
+function radio(name: string, value: string): HTMLInputElement {
+  const r = el("input", "settings__radio");
+  r.type = "radio";
+  r.name = name;
+  r.value = value;
+  r.id = `${name}-${value}`;
+  return r;
+}
+function labelFor(input: HTMLInputElement, text: string): HTMLLabelElement {
+  const l = el("label", "settings__label settings__label--radio");
+  l.htmlFor = input.id;
+  l.append(input, document.createTextNode(text));
+  return l;
+}
+function labelText(text: string, control: HTMLElement): HTMLLabelElement {
+  const l = el("label", "settings__label");
+  if (!control.id) control.id = `settings-control-${++uid}`;
+  l.htmlFor = control.id;
+  l.textContent = text;
+  return l;
+}
+function row(label: HTMLElement, control: HTMLElement | null, extraClass = ""): HTMLElement {
+  const r = el("div", `settings__row ${extraClass}`.trim());
+  r.append(label);
+  if (control) r.append(control);
+  return r;
+}
+function section(heading: string, rows: HTMLElement[]): HTMLElement {
+  const s = el("section", "settings__section");
+  const h = el("h2", "settings__heading");
+  h.textContent = heading;
+  s.append(h, ...rows);
+  return s;
+}

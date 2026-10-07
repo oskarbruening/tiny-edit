@@ -8,7 +8,7 @@ files:
   - package.json
 mac:
   category: public.app-category.productivity
-  icon: build/icon.png
+  icon: build/icon.icns # built by `npm run icon` (scripts/make-icon.mjs), not derived from a PNG
   identity: "-" # ad-hoc signature for personal use; no notarisation
   hardenedRuntime: false
   target:

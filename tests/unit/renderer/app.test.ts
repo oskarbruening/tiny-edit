@@ -121,8 +121,9 @@ describe("mount", () => {
     expect(root.querySelector("main.editor .editor__notice")).toBe(shell.noticeHost);
     expect(root.querySelector("main.editor .editor__host")).toBe(shell.editorHost);
     expect(root.querySelector(".sidebar .sidebar__divider")).toBe(shell.divider);
+    expect(root.querySelector(".settings")).toBe(shell.settingsHost);
     mount(root);
-    expect(root.children).toHaveLength(2);
+    expect(root.children).toHaveLength(3);
   });
 });
 
@@ -566,6 +567,57 @@ describe("boot", () => {
       for (let i = 0; i < 80; i++) app.handleMenuAction({ type: "zoomOut" });
       expect(app.store.get().fontSize).toBe(8);
       expect(document.documentElement.style.getPropertyValue("--te-font-size")).toBe("8px");
+    });
+
+    it("openSettings toggles the panel; its controls patch theme and font size; Esc gives focus back", async () => {
+      const f = fakeApi({ ...twoFiles(), activePath: null }, { "/a.md": "aaa", "/b.md": "bbb" });
+      const app = await boot(document.createElement("div"), f.api);
+      apps.push(app);
+      expect(app.settings.visible).toBe(false);
+      f.menu({ type: "openSettings" });
+      expect(app.settings.visible).toBe(true);
+      expect(app.shell.settingsHost.hidden).toBe(false);
+
+      const slider = app.shell.settingsHost.querySelector<HTMLInputElement>(".settings__font")!;
+      expect(slider.value).toBe("3");
+      slider.value = "5";
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+      expect(app.store.get().fontSize).toBe(18);
+      expect(document.documentElement.style.getPropertyValue("--te-font-size")).toBe("18px");
+      expect(f.api.patchState).toHaveBeenLastCalledWith({ fontSize: 18 });
+
+      // Zoom from the menu lands between steps; the slider snaps to the nearest one.
+      app.handleMenuAction({ type: "zoomOut" });
+      expect(app.store.get().fontSize).toBe(17);
+      expect(slider.value).toBe("5");
+      app.handleMenuAction({ type: "zoomOut" });
+      app.handleMenuAction({ type: "zoomOut" });
+      expect(slider.value).toBe("4");
+
+      const fixed = app.shell.settingsHost.querySelector<HTMLInputElement>("#settings-mode-fixed")!;
+      fixed.checked = true;
+      fixed.dispatchEvent(new Event("change", { bubbles: true }));
+      expect(app.store.get().theme.mode).toBe("fixed");
+      const select = app.shell.settingsHost.querySelector<HTMLSelectElement>(".settings__fixed")!;
+      expect(select.disabled).toBe(false);
+      select.value = "tokyo-night";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      expect(app.store.get().theme).toMatchObject({ mode: "fixed", fixed: "tokyo-night" });
+      expect(document.documentElement.dataset["theme"]).toBe("tokyo-night");
+
+      // A user theme appearing in the folder shows up in the selects without reopening.
+      f.themes([...BUILTIN_THEMES, { ...MEADOW, id: "mine", name: "Mine", builtin: false }]);
+      expect([...select.options].map((o) => o.value)).toContain("mine");
+
+      f.menu({ type: "openSettings" });
+      expect(app.settings.visible).toBe(false);
+
+      await app.openFile("/a.md");
+      app.settings.open();
+      const focus = vi.spyOn(app.editor.view, "focus");
+      app.shell.settingsHost.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      expect(app.settings.visible).toBe(false);
+      expect(focus).toHaveBeenCalledTimes(1);
     });
 
     it("right-clicking a sidebar entry asks main for the native menu", async () => {

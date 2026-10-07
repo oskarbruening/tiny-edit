@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- 2026-10-07 — Settings: App menu → Settings… (Cmd+,) opens an in-window panel to choose the theme (Automatic with a light/dark pair, or Fixed) and the editor font size with a five-step slider (10–18 px, 14 px in the middle).
+
+- 2026-10-07 — Fix: the app icon showed a grey tile around the logo and a garbled small icon in Finder lists; it is now a solid dark full-bleed icon with a correctly built `.icns`. `npm run icon` regenerates both from `logo.png`.
+
+## 0.1.0 — 2026-10-07
+
 - 2026-10-07 — Fix: long documents did not scroll (the editor grew past the window); the editor now scrolls inside its pane and keeps the caret in view.
 
 - 2026-10-07 — Fix: the packaged app showed an empty window (renderer never loaded under the production fuses); the renderer is now served from a private `app://` scheme instead of `file://`.

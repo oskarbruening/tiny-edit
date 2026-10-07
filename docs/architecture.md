@@ -85,25 +85,25 @@ shared/  ipc.ts (channels + Api type) · types.ts · themes.ts (tokens, parser, 
 
 ## IPC channels (`src/shared/ipc.ts`)
 
-| Channel                               | Direction | Payload → Result                                                                                                            |
-| ------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `state:get`                           | R→M       | → full `State`                                                                                                              |
-| `state:patch`                         | R→M       | `Partial<State>` → void (debounced write)                                                                                   |
-| `file:read`                           | R→M       | `{ path }` → `{ text, eol, mtimeMs, size }`                                                                                 |
-| `file:write`                          | R→M       | `{ path, text, eol }` → `{ mtimeMs, size }`                                                                                 |
-| `file:create`                         | R→M       | `{ dir, name }` → `{ path }`                                                                                                |
-| `files:add`                           | R→M       | `{ paths }` → `{ added: string[], rejected: {path, reason}[] }`                                                             |
-| `files:reveal` / `files:copyPath`     | R→M       | `{ path }` → void                                                                                                           |
-| `shell:openExternal`                  | R→M       | `{ url }` → void (allow-listed)                                                                                             |
-| `themes:list`                         | R→M       | → `Theme[]` (built-ins + user)                                                                                              |
-| `themes:openFolder`                   | R→M       | → void                                                                                                                      |
-| `renderer:ready` / `renderer:flushed` | R→M       | signals                                                                                                                     |
-| `watch:changed` / `watch:missing`     | M→R       | `{ path, mtimeMs?, size? }`                                                                                                 |
-| `files:opened`                        | M→R       | `{ paths }` (from `open-file`, dialog, Dock)                                                                                |
-| `menu:action`                         | M→R       | `{ type: 'find' \| 'replace' \| 'toggleSidebar' \| 'zoomIn' \| 'zoomOut' \| 'zoomReset' \| 'closeFile' \| 'newFile' \| … }` |
-| `themes:changed`                      | M→R       | `Theme[]` (user theme folder hot reload)                                                                                    |
-| `appearance:changed`                  | M→R       | `'light' \| 'dark'` (nativeTheme)                                                                                           |
-| `renderer:flush`                      | M→R       | request flush before quit                                                                                                   |
+| Channel                               | Direction | Payload → Result                                                                                                                              |
+| ------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state:get`                           | R→M       | → full `State`                                                                                                                                |
+| `state:patch`                         | R→M       | `Partial<State>` → void (debounced write)                                                                                                     |
+| `file:read`                           | R→M       | `{ path }` → `{ text, eol, mtimeMs, size }`                                                                                                   |
+| `file:write`                          | R→M       | `{ path, text, eol }` → `{ mtimeMs, size }`                                                                                                   |
+| `file:create`                         | R→M       | `{ dir, name }` → `{ path }`                                                                                                                  |
+| `files:add`                           | R→M       | `{ paths }` → `{ added: string[], rejected: {path, reason}[] }`                                                                               |
+| `files:reveal` / `files:copyPath`     | R→M       | `{ path }` → void                                                                                                                             |
+| `shell:openExternal`                  | R→M       | `{ url }` → void (allow-listed)                                                                                                               |
+| `themes:list`                         | R→M       | → `Theme[]` (built-ins + user)                                                                                                                |
+| `themes:openFolder`                   | R→M       | → void                                                                                                                                        |
+| `renderer:ready` / `renderer:flushed` | R→M       | signals                                                                                                                                       |
+| `watch:changed` / `watch:missing`     | M→R       | `{ path, mtimeMs?, size? }`                                                                                                                   |
+| `files:opened`                        | M→R       | `{ paths }` (from `open-file`, dialog, Dock)                                                                                                  |
+| `menu:action`                         | M→R       | `{ type: 'find' \| 'replace' \| 'toggleSidebar' \| 'openSettings' \| 'zoomIn' \| 'zoomOut' \| 'zoomReset' \| 'closeFile' \| 'newFile' \| … }` |
+| `themes:changed`                      | M→R       | `Theme[]` (user theme folder hot reload)                                                                                                      |
+| `appearance:changed`                  | M→R       | `'light' \| 'dark'` (nativeTheme)                                                                                                             |
+| `renderer:flush`                      | M→R       | request flush before quit                                                                                                                     |
 
 Every R→M handler validates types and paths; path-bearing calls other than `files:add`/`file:create` require the path to be in `state.files`. Every handler also checks `event.senderFrame.url` against our renderer origins (`file://` build, or the dev server URL) via `trustedSenderFor`. Text acceptance: accepted extension (`.md .markdown .txt .text`) or the first 8 KB has no NUL and decodes as UTF-8. The preload's `pathForFile` wraps `webUtils.getPathForFile` and returns `""` for anything that is not a disk file.
 
@@ -190,6 +190,13 @@ type ThemeTokens = {
 - Mode `auto` picks `theme.light` / `theme.dark` from `nativeTheme.shouldUseDarkColors`; mode `fixed` uses `theme.fixed`.
 - User themes: `userData/themes/*.json` matching `Theme` minus `builtin`; folder watched, invalid files skipped with a console warning; View → Theme → Open Themes Folder.
 
+## Settings (`src/renderer/settings/`)
+
+- App menu → Settings… (Cmd+,) relays `menu:action { type: 'openSettings' }`; the renderer toggles an in-window overlay panel (`role="dialog"`, Esc / backdrop / Done close it, focus returns to the editor). No second window, no extra IPC: the panel reads the store and the theme list and persists through the existing `state:patch`.
+- **Theme:** Automatic (with the Light / Dark pair) or Fixed (one theme); the same `ThemeState` the View → Theme menu edits, so both stay in sync (menu rebuild on state change, panel `update()` on store/theme-list change).
+- **Font size:** a five-step slider over `FONT_SIZE_STEPS` (10 / 12 / 14 / 16 / 18 px; the 14 px default is the middle step). It writes `fontSize` exactly like Cmd+/− zoom; a zoomed size between steps shows the nearest step. Everything not part of a theme that becomes user-configurable later goes here.
+- Styles live in `settings/settings.css` (linked from `index.html`), tokens only; the CSS-variable coverage test scans it too.
+
 ## Window
 
 - `titleBarStyle: 'hiddenInset'`, `trafficLightPosition` tuned so the lights sit in the sidebar header; a 38 px drag region across the top with `-webkit-app-region: no-drag` on controls.
@@ -201,7 +208,7 @@ type ThemeTokens = {
 
 - electron-vite bundles `src/main` → `out/main/index.js` and `src/preload` → `out/preload/index.js` as CommonJS (sandboxed preloads must be CJS; ESM preloads require `sandbox: false`). The renderer is a normal Vite build in `out/renderer/`. Dev mode loads `ELECTRON_RENDERER_URL` from the Vite dev server; production loads `app://renderer/index.html` through `protocol.handle` (`src/main/appProtocol.ts`). The CSP meta tag works in both because Vite's HMR client is same-origin and `app://renderer` is a standard, secure scheme.
 
-- `npm run package` → electron-vite build → electron-builder `mac` target `dir` (arm64) → `dist/mac-arm64/Tiny Edit.app`. Ad-hoc signed (`identity: "-"`), `hardenedRuntime: false`, no notarisation, no `.dmg` (personal use). `fileAssociations` register `.md/.markdown` and `.txt/.text`. Fuses flipped in the packaged app only (`electronFuses` in `electron-builder.yml`): RunAsNode off, NodeOptions env off, Node CLI inspect off, cookie encryption on, embedded ASAR integrity on, only-load-from-ASAR on, file-protocol extra privileges off. All runtime JS is bundled by Vite, so `package.json` has no `dependencies` and the ASAR carries only `out/`. `npm run install:app` packages and copies the bundle to `/Applications/Tiny Edit.app` with `sudo ditto` (writing to `/Applications` from a shell needs admin rights; signature preserved; first launch registers the file associations); `install:app:user` targets `~/Applications` instead. Icon: `logo.png` (1254×1254 RGBA) in the repo root; `npm run package` derives `build/icon.png` (1024×1024) and the `.icns` from it via electron-builder.
+- `npm run package` → electron-vite build → electron-builder `mac` target `dir` (arm64) → `dist/mac-arm64/Tiny Edit.app`. Ad-hoc signed (`identity: "-"`), `hardenedRuntime: false`, no notarisation, no `.dmg` (personal use). `fileAssociations` register `.md/.markdown` and `.txt/.text`. Fuses flipped in the packaged app only (`electronFuses` in `electron-builder.yml`): RunAsNode off, NodeOptions env off, Node CLI inspect off, cookie encryption on, embedded ASAR integrity on, only-load-from-ASAR on, file-protocol extra privileges off. All runtime JS is bundled by Vite, so `package.json` has no `dependencies` and the ASAR carries only `out/`. `npm run install:app` packages and copies the bundle to `/Applications/Tiny Edit.app` with `sudo ditto` (writing to `/Applications` from a shell needs admin rights; signature preserved; first launch registers the file associations); `install:app:user` targets `~/Applications` instead. Icon: `logo.png` (1254×1254 RGBA) is the artwork; `npm run icon` (`scripts/make-icon.mjs`, Node + macOS `sips`/`iconutil`) renders `build/icon.png` (1024×1024, fully opaque: the logo's dominant brown edge to edge, artwork centred at 1200 px) and packs `build/icon.icns` from it. electron-builder ships that `.icns` untouched. Full bleed because macOS masks legacy icons to its squircle and shrinks any icon with transparent margins onto a grey tile; the original artwork is also only ~90 % opaque. electron-builder's own PNG→icns conversion is bypassed because it wrote noise into the 16 px size. Re-run `npm run icon` whenever `logo.png` changes.
 
 ## Testing map
 

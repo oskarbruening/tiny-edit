@@ -59,8 +59,10 @@ describe("built-in themes", () => {
 });
 
 describe("themeCssVars", () => {
-  it("produces every --te-* variable that styles.css consumes (except layout vars)", () => {
-    const css = readFileSync(new URL("../../../src/renderer/styles.css", import.meta.url), "utf8");
+  it("produces every --te-* variable that the renderer's CSS consumes (except layout vars)", () => {
+    const css = ["styles.css", "settings/settings.css"]
+      .map((f) => readFileSync(new URL(`../../../src/renderer/${f}`, import.meta.url), "utf8"))
+      .join("\n");
     const used = new Set([...css.matchAll(/var\((--te-[a-z0-9-]+)/g)].map((m) => m[1]!));
     const layout = new Set(["--te-sidebar-width", "--te-titlebar-height", "--te-font-size"]);
     const produced = new Set(Object.keys(themeCssVars(MEADOW.tokens)));

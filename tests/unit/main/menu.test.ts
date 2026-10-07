@@ -21,12 +21,51 @@ const base = () => ({
 describe("menuTemplate", () => {
   it("has the standard macOS structure with roles", () => {
     const t = menuTemplate(base());
-    expect(t.map((m) => m.role ?? m.label)).toEqual(["appMenu", "File", "Edit", "View", "windowMenu"]);
+    expect(t.map((m) => m.role ?? m.label)).toEqual(["Tiny Edit", "File", "Edit", "View", "windowMenu"]);
     const roles = flatten(t)
       .map((i) => i.role)
       .filter(Boolean);
-    expect(roles).toEqual(expect.arrayContaining(["undo", "redo", "cut", "copy", "paste", "selectAll"]));
+    expect(roles).toEqual(
+      expect.arrayContaining([
+        "about",
+        "services",
+        "hide",
+        "hideOthers",
+        "unhide",
+        "quit",
+        "undo",
+        "redo",
+        "cut",
+        "copy",
+        "paste",
+        "selectAll",
+      ]),
+    );
     expect(roles).not.toContain("toggleDevTools");
+  });
+
+  it("puts Settings… in the app menu with Cmd+,", () => {
+    const deps = base();
+    const t = menuTemplate(deps);
+    const appMenu = t[0]!.submenu as MenuItemConstructorOptions[];
+    expect(appMenu.map((i) => i.role ?? i.id ?? i.type)).toEqual([
+      "about",
+      "separator",
+      "settings",
+      "separator",
+      "services",
+      "separator",
+      "hide",
+      "hideOthers",
+      "unhide",
+      "separator",
+      "quit",
+    ]);
+    const settings = byId(t, "settings");
+    expect(settings.label).toBe("Settings…");
+    expect(settings.accelerator).toBe("CmdOrCtrl+,");
+    click(settings);
+    expect(deps.send).toHaveBeenCalledWith({ type: "openSettings" });
   });
 
   it("puts the Theme submenu in View", () => {
