@@ -1,0 +1,216 @@
+# tiny-edit — Architecture
+
+Last updated 2026-10-07 (matches the code after build step 10).
+
+## Purpose
+
+A macOS Electron app for editing Markdown and plain-text files quickly. One window: a resizable sidebar listing the files you have opened (extension stripped) and a monospace CodeMirror 6 editor that colours Markdown and fenced code without ever hiding or reformatting it. Autosaves, remembers everything, reloads when another program changes the file.
+
+## Fundamental guidelines
+
+1. **The text is sacred.** The app never inserts, removes, or substitutes characters on its own. Reads and writes are byte-faithful apart from the user's edits. Only two keyboard conveniences exist: Tab → two spaces, Enter → copies previous line's leading whitespace.
+2. **Highlight, don't format.** Colour, bold for strong, italic for emphasis. Same monospace size everywhere; markers visible.
+3. **Never lose words.** Atomic writes, flush before quit, conflicts surface a choice instead of picking a side.
+4. **Instant.** Hidden window + `ready-to-show`; one state read at startup; viewport-rendered editor; async IPC; nothing on the keystroke path but the editor.
+5. **Plain files, one state file, offline.** No DB, no network, no font downloads, no updater.
+6. **Secure by default.** Sandboxed renderer, isolated preload, CSP, denied navigation and popups, validated IPC arguments, allow-listed external URLs.
+7. **Testable by construction.** Pure modules with injected `fs`/`electron`; wiring files are thin; coverage gate 95 % lines.
+8. **Tokens, not colours.** Every colour in CSS or the editor highlight style is a `--te-*` variable set from a theme.
+
+## Process model
+
+```
+┌─ main (Node, CJS bundle) ────────────────────────────────────────────┐
+│ index.ts        wiring: app lifecycle, single-instance, open-file│
+│ window.ts       BrowserWindow factory (hiddenInset, bg colour)   │
+│ windowState.ts  bounds save/restore, display validation, debounce│
+│ state.ts        state.json load/parse/save (versioned, atomic)   │
+│ files.ts        read/write (atomic), stat, accept check, new file│
+│ watcher.ts      per-dir fs.watch, debounce, self-write suppress  │
+│ themes.ts       built-ins + userData/themes/*.json loader/watcher│
+│ menu.ts         app menu (roles + relayed custom items)          │
+│ ipc.ts          registerIpc(): every channel + arg validation    │
+└──────────────┬──────────── webContents.send / ipcMain.handle ────┘
+               │
+┌─ preload (CJS, sandboxed) ─────────────────────────────────────┐
+│ index.ts  contextBridge.exposeInMainWorld('api', Api)           │
+│           getPathForFile(File) via webUtils                     │
+└──────────────┬─────────────────────────────────────────────────┘
+               │ window.api (typed by src/shared/ipc.ts)
+┌─ renderer (browser, vanilla TS) ───────────────────────────────┐
+│ main.ts         bootstrap: state -> theme -> sidebar -> editor  │
+│ store.ts        in-memory view state, patches -> state:patch    │
+│ sidebar/        list, selection, drag reorder, drop, context    │
+│ editor/         CM6 setup, markdown + fenced langs, highlight   │
+│                 style -> CSS vars, autosave scheduler, undo map │
+│ conflict.ts     "Changed on disk · Reload / Keep mine" bar      │
+│ theme/          tokens -> --te-* on <html>, Auto (light/dark)   │
+└────────────────────────────────────────────────────────────────┘
+shared/  ipc.ts (channels + Api type) · types.ts · themes.ts (tokens, parser, built-ins) · text.ts (line-ending detect, UTF-8 sniff)
+```
+
+## Data flow
+
+**Launch.** `protocol.registerSchemesAsPrivileged` for `app://` (before ready) → `app.ready` → `protocol.handle("app", …)` serves `out/renderer/**` at `app://renderer/<path>` (traversal-safe, mime by extension) → `state.load()` (sync, once) → `createWindow()` hidden, `backgroundColor` = resolved theme surface, bounds from validated state or centred 950×500 → `registerIpc()` → renderer boots → `state:get` → applies theme, renders sidebar, reads active file (`file:read`), restores cursor/selection/scroll → `ready-to-show` → `win.show()`. `open-file` events (Finder double-click, Dock drop) are queued in `OpenQueue` from before `ready` and drained through `openPaths` once the window exists. The window title and proxy icon (`setRepresentedFilename`) follow `activePath`.
+
+**Typing.** CM6 update → mark buffer dirty, record `docChanged` → 300 ms idle timer → `file:write { path, text, eol }` → main writes `path + '.tmp-<pid>'` then `rename` → records `{ mtimeMs, size }` as our own write → returns → renderer marks clean. Immediate flush on: switching files, `window.blur`, `visibilitychange: hidden`, and window close (`guardClose` intercepts the first `close`, sends `renderer:flush`, waits for `renderer:flushed` ≤ 2 s, flushes `state.json`, then destroys the window; Cmd+Q and the red button both go through this). Renderer `Autosave` keeps one write in flight per file, re-queues edits made meanwhile, and parks a file after a conflict until Reload / Keep mine (`force`). A failed write keeps the buffer dirty and shows a Retry notice.
+
+**External change.** `Watcher` sees an event for a listed path → 150 ms debounce → `stat` → differs from the stamp the renderer holds → `watch:changed { path, stamp }` → renderer: not loaded yet → ignore (the next open reads fresh); clean (active or background) → `file:read` + `replaceText` keeping caret and scroll (clamped); dirty → `autosave.park` + conflict bar (immediately if active, otherwise when it becomes active). Window `focus` → `checkAll()` re-stats every listed file → same path. File gone → `watch:missing` → entry dimmed, notice when active, buffer kept, next autosave recreates the file.
+
+**Adding files.** Sidebar `drop` → preload `getPathForFile` per `File` → `files:add [paths]` → main: absolute, exists, regular file (folders → direct children), accepted (`.md .markdown .txt .text` or first 8 KB decodes as UTF-8 with no NUL) → appended to `state.files`, duplicates ignored → renderer selects the first new file. Same path for `open-file` (Finder double-click / Dock drop) and File → Open… (`dialog.showOpenDialog`). `Cmd+N` → prompt for name in-app → `file:create { dir, name }` next to the active file (Documents if none) → added and selected.
+
+**Sidebar actions.** Click → switch (flush current, load next, restore per-file view state). Drag → reorder (`state:patch { files }`). Right-click → native context menu: Remove from list (also `Cmd+W` for the active file), Reveal in Finder, Copy path. `Cmd+N` → inline name input at the bottom of the list (Enter creates `name.md` next to the active file, or in Documents when the list is empty; Esc cancels; errors inline). Drops are accepted anywhere in the window (`installDropzone`): the sidebar highlights, paths go through `files:add`, the text is never touched. Reordering is HTML5 drag with the private MIME `application/x-tiny-edit-path` so it can never be confused with a Finder drop (`reorder()` is pure). The divider (`installDivider`) previews the width live and commits once on release (120–600 px); `Cmd+\` toggles `sidebarVisible`; `Cmd+=`/`-`/`0` zoom `fontSize` 8–48.
+
+**Links.** `Cmd+click` on a Markdown link or bare URL → `shell:openExternal` → main parses with `new URL` and allows only `https:`, `http:`, `mailto:`.
+
+## State file — `~/Library/Application Support/tiny-edit/state.json`
+
+```json
+{
+  "version": 1,
+  "window": { "x": 120, "y": 80, "width": 950, "height": 500 },
+  "sidebarWidth": 200,
+  "sidebarVisible": true,
+  "fontSize": 14,
+  "theme": { "mode": "auto", "light": "meadow", "dark": "catppuccin-mocha", "fixed": "tokyo-night" },
+  "activePath": "/Users/muse/notes/todo.md",
+  "files": [{ "path": "/Users/muse/notes/todo.md", "anchor": 1234, "head": 1234, "scrollTop": 480 }]
+}
+```
+
+- Written atomically (`state.json.tmp` + rename), debounced 250 ms, flushed on quit.
+- Parsed field by field with defaults; unknown fields dropped; on JSON parse failure the file is renamed `state.json.corrupt-<iso>` and defaults apply.
+- `window` is validated against `screen.getAllDisplays()` work areas before use; min size 400×300.
+- Per-file state is capped to the files in the list; removing a file removes its state.
+
+## IPC channels (`src/shared/ipc.ts`)
+
+| Channel                               | Direction | Payload → Result                                                                                                            |
+| ------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `state:get`                           | R→M       | → full `State`                                                                                                              |
+| `state:patch`                         | R→M       | `Partial<State>` → void (debounced write)                                                                                   |
+| `file:read`                           | R→M       | `{ path }` → `{ text, eol, mtimeMs, size }`                                                                                 |
+| `file:write`                          | R→M       | `{ path, text, eol }` → `{ mtimeMs, size }`                                                                                 |
+| `file:create`                         | R→M       | `{ dir, name }` → `{ path }`                                                                                                |
+| `files:add`                           | R→M       | `{ paths }` → `{ added: string[], rejected: {path, reason}[] }`                                                             |
+| `files:reveal` / `files:copyPath`     | R→M       | `{ path }` → void                                                                                                           |
+| `shell:openExternal`                  | R→M       | `{ url }` → void (allow-listed)                                                                                             |
+| `themes:list`                         | R→M       | → `Theme[]` (built-ins + user)                                                                                              |
+| `themes:openFolder`                   | R→M       | → void                                                                                                                      |
+| `renderer:ready` / `renderer:flushed` | R→M       | signals                                                                                                                     |
+| `watch:changed` / `watch:missing`     | M→R       | `{ path, mtimeMs?, size? }`                                                                                                 |
+| `files:opened`                        | M→R       | `{ paths }` (from `open-file`, dialog, Dock)                                                                                |
+| `menu:action`                         | M→R       | `{ type: 'find' \| 'replace' \| 'toggleSidebar' \| 'zoomIn' \| 'zoomOut' \| 'zoomReset' \| 'closeFile' \| 'newFile' \| … }` |
+| `themes:changed`                      | M→R       | `Theme[]` (user theme folder hot reload)                                                                                    |
+| `appearance:changed`                  | M→R       | `'light' \| 'dark'` (nativeTheme)                                                                                           |
+| `renderer:flush`                      | M→R       | request flush before quit                                                                                                   |
+
+Every R→M handler validates types and paths; path-bearing calls other than `files:add`/`file:create` require the path to be in `state.files`. Every handler also checks `event.senderFrame.url` against our renderer origins (`file://` build, or the dev server URL) via `trustedSenderFor`. Text acceptance: accepted extension (`.md .markdown .txt .text`) or the first 8 KB has no NUL and decodes as UTF-8. The preload's `pathForFile` wraps `webUtils.getPathForFile` and returns `""` for anything that is not a disk file.
+
+## Editor (`src/renderer/editor/`)
+
+- `Editor` owns one `EditorView` and a `Map<path, EditorState>`; switching files swaps states so undo history and unsaved edits survive, reopening reuses the state. `replaceText` swaps a document keeping a clamped caret (external reload). Caret/scroll changes are debounced 300 ms (only real selection/doc changes count, not CodeMirror's focus transactions) and persisted via `Store.setFileView` → `state:patch`.
+- `Store` (renderer) applies patches locally first, then forwards to main; `Notice` is the single bar above the editor (missing file, large file, conflicts); `Sidebar` renders from state (`displayName` strips accepted extensions, `is-active`, `is-missing`).
+
+- CodeMirror 6: `EditorState` + `EditorView`, `markdown({ base: markdownLanguage, codeLanguages })` with a bundled language set (JavaScript/TypeScript, JSON, HTML, CSS, Python, Shell, SQL, YAML, Markdown, Go, Rust); unknown fences get generic string/comment/bracket colouring via a tiny fallback grammar.
+- Extensions: `history` (one per file, kept in a `Map<path, EditorState>` while the app runs), `drawSelection`, `highlightSelectionMatches`, `search` (Cmd+F / Cmd+Alt+F), `EditorView.lineWrapping`, `indentUnit` = two spaces, `insertNewlineAndIndent` replaced by a copy-leading-whitespace command, `rainbowBrackets` (three colours, only inside fenced code nodes), `keymap` with no auto-close brackets and no list continuation.
+- Content attributes: `spellcheck=false autocorrect=off autocapitalize=off` (CM default), plus `webPreferences.spellcheck: false`.
+- `HighlightStyle` maps Lezer tags to `te-*` classes (`SYNTAX_CLASSES`); `styles.css` colours those classes from `--te-syntax-*` tokens, so a theme switch is a variable swap and tests assert classes. Headings are colour only; strong is bold, emphasis italic; nothing changes size.
+- Fenced code: `languages.ts` lists `LanguageDescription`s (JS/TS, JSON, HTML, CSS, Python, Shell, SQL, YAML, Go, Rust) loaded lazily on first use; unknown or missing info strings fall back to `genericLanguage`, a stream tokenizer for strings, comments and numbers. `rainbow.ts` decorates `()[]{}` inside `FencedCode` bodies with `te-bracket-1..3` by nesting depth (prose untouched).
+- Line endings: on read, detect `\r\n` vs `\n` (first occurrence wins; mixed files are preserved by splitting on `\n` only and keeping `\r` in the text); on write, the detected EOL is re-applied. No final newline added or removed.
+- Files > 10 MB open with a one-line warning in the conflict-bar slot.
+
+## Themes (`src/shared/themes.ts`)
+
+- Six built-ins: Meadow (light), Tokyo Night, Catppuccin Latte (light), Frappé, Macchiato, Mocha (dark). UI roles are the hub's; syntax palettes are the canonical Tokyo Night / Catppuccin colours. `resolveTheme(setting, themes, appearance)` never fails (falls back to the defaults, then Meadow).
+- Main: `UserThemes` loads `userData/themes/*.json` (defensive `parseUserTheme`: id from the file name, appearance from surface luminance, tokens filled from the matching built-in), watches the folder (200 ms debounce) and pushes `themes:changed`; `nativeTheme.updated` pushes `appearance:changed`; both plus theme-state changes rebuild the View → Theme menu (Automatic / fixed radios, Light/Dark-for-Automatic submenus, Open Themes Folder) and re-set the window's `backgroundColor` to the theme surface so nothing flashes.
+- Renderer: `applyTheme` writes every `--te-*` variable (`themeCssVars`), `data-appearance`, `data-theme` and `color-scheme` on `<html>`; re-painted on theme-state, theme-list and appearance changes. A unit test checks that every `var(--te-*)` used in `styles.css` is produced by `themeCssVars` (layout vars excepted) and that the CSS defaults equal Meadow.
+
+```ts
+type Theme = {
+  id: string;
+  name: string;
+  builtin: boolean;
+  appearance: "light" | "dark";
+  tokens: ThemeTokens;
+};
+type ThemeTokens = {
+  colors: {
+    surface;
+    surfaceContainer;
+    surfaceContainerHigh;
+    card;
+    line;
+    ink;
+    muted;
+    primary;
+    onPrimary;
+    primaryContainer;
+    onPrimaryContainer;
+    secondaryContainer;
+    sel;
+    danger;
+    dangerContainer;
+    inverseSurface;
+    inverseOnSurface;
+    inversePrimary;
+  }; // hub roles, #rrggbb
+  syntax: {
+    heading;
+    strong;
+    emphasis;
+    link;
+    url;
+    inlineCode;
+    codeBlock;
+    codeFence;
+    quote;
+    listMarker;
+    hr;
+    keyword;
+    string;
+    number;
+    comment;
+    operator;
+    typeName;
+    functionName;
+    property;
+    bracket1;
+    bracket2;
+    bracket3;
+  }; // #rrggbb
+  radius: number; // 0–24, scale derived ×0.5 / ×1 / ×1.5 / ×2.5
+  fontFamily: string; // installed/system fonts only; no downloads
+};
+```
+
+- Built-ins: Meadow (light), Tokyo Night (dark), Catppuccin Latte (light), Frappé, Macchiato, Mocha (dark), ported from the hub with syntax palettes added.
+- `parseThemeTokens(raw)` falls back field by field to Meadow; colours must match `^#[0-9a-fA-F]{6}$`, radius clamps to 0–24.
+- `themeCssVars(tokens)` → `--te-<kebab-role>` and `--te-syntax-<kebab-role>`, set on `<html>`; the main window's `backgroundColor` is updated to the new surface on switch.
+- Mode `auto` picks `theme.light` / `theme.dark` from `nativeTheme.shouldUseDarkColors`; mode `fixed` uses `theme.fixed`.
+- User themes: `userData/themes/*.json` matching `Theme` minus `builtin`; folder watched, invalid files skipped with a console warning; View → Theme → Open Themes Folder.
+
+## Window
+
+- `titleBarStyle: 'hiddenInset'`, `trafficLightPosition` tuned so the lights sit in the sidebar header; a 38 px drag region across the top with `-webkit-app-region: no-drag` on controls.
+- `setRepresentedFilename(activePath)` and `setTitle(basename)` on switch; `setDocumentEdited` is not used (autosave).
+- Single window; `window-all-closed` quits (macOS included, since the app is document-less without its window).
+- Default 950×500 (750 editor + 200 sidebar), min 400×300; `ApplePressAndHoldEnabled=false` for key repeat.
+
+## Build & packaging
+
+- electron-vite bundles `src/main` → `out/main/index.js` and `src/preload` → `out/preload/index.js` as CommonJS (sandboxed preloads must be CJS; ESM preloads require `sandbox: false`). The renderer is a normal Vite build in `out/renderer/`. Dev mode loads `ELECTRON_RENDERER_URL` from the Vite dev server; production loads `app://renderer/index.html` through `protocol.handle` (`src/main/appProtocol.ts`). The CSP meta tag works in both because Vite's HMR client is same-origin and `app://renderer` is a standard, secure scheme.
+
+- `npm run package` → electron-vite build → electron-builder `mac` target `dir` (arm64) → `dist/mac-arm64/Tiny Edit.app`. Ad-hoc signed (`identity: "-"`), `hardenedRuntime: false`, no notarisation, no `.dmg` (personal use). `fileAssociations` register `.md/.markdown` and `.txt/.text`. Fuses flipped in the packaged app only (`electronFuses` in `electron-builder.yml`): RunAsNode off, NodeOptions env off, Node CLI inspect off, cookie encryption on, embedded ASAR integrity on, only-load-from-ASAR on, file-protocol extra privileges off. All runtime JS is bundled by Vite, so `package.json` has no `dependencies` and the ASAR carries only `out/`. `npm run install:app` packages and copies the bundle to `/Applications/Tiny Edit.app` with `sudo ditto` (writing to `/Applications` from a shell needs admin rights; signature preserved; first launch registers the file associations); `install:app:user` targets `~/Applications` instead. Icon: `logo.png` (1254×1254 RGBA) in the repo root; `npm run package` derives `build/icon.png` (1024×1024) and the `.icns` from it via electron-builder.
+
+## Testing map
+
+| Area                                      | Unit (Vitest)                                                  | E2E (Playwright `_electron`)                              |
+| ----------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------- |
+| state, windowState                        | parse/defaults/corrupt file, debounce, display validation      | size on first launch, restore after relaunch              |
+| files, text                               | atomic write, EOL detection, UTF-8 sniff, accept rules, create | open, switch, autosave visible on disk                    |
+| watcher                                   | self-write suppression, debounce, missing file                 | external edit → reload keeps caret; dirty → conflict bar  |
+| ipc                                       | every handler's validation, rejects foreign paths              | —                                                         |
+| preload                                   | API shape, unsubscribe, getPathForFile wrapper                 | —                                                         |
+| renderer: sidebar, store, conflict, theme | DOM behaviour in happy-dom                                     | drop via `files:add`, reorder, remove, Cmd+W, Cmd+\       |
+| editor                                    | commands (Tab, Enter), highlight tags → vars, no auto-insert   | type `"`/`(`/`"` and assert bytes unchanged; theme switch |

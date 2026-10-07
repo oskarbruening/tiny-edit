@@ -1,0 +1,113 @@
+import { describe, expect, it } from "vitest";
+import {
+  parentDir,
+  detectEol,
+  displayName,
+  extensionOf,
+  isAcceptedExtension,
+  looksLikeText,
+  normalizeNewFileName,
+  stripBom,
+  toEditorText,
+  toFileText,
+} from "../../../src/shared/text";
+
+describe("extensionOf / isAcceptedExtension / displayName", () => {
+  it("finds lower-cased extensions and ignores dotfiles", () => {
+    expect(extensionOf("/a/b/Notes.MD")).toBe(".md");
+    expect(extensionOf("/a/.gitignore")).toBe("");
+    expect(extensionOf("/a/noext")).toBe("");
+    expect(extensionOf("C:\\x\\y.TXT")).toBe(".txt");
+    expect(extensionOf("/a/b.tar.gz")).toBe(".gz");
+  });
+  it("accepts md/markdown/txt/text only", () => {
+    for (const p of ["a.md", "a.markdown", "a.txt", "a.text", "A.MD"])
+      expect(isAcceptedExtension(p)).toBe(true);
+    for (const p of ["a.json", "a", ".md", "a.md.bak"]) expect(isAcceptedExtension(p)).toBe(false);
+  });
+  it("strips accepted extensions in the sidebar label, keeps others", () => {
+    expect(displayName("/x/todo.md")).toBe("todo");
+    expect(displayName("/x/notes.TXT")).toBe("notes");
+    expect(displayName("/x/config.json")).toBe("config.json");
+    expect(displayName("/x/README")).toBe("README");
+    expect(displayName("/x/.md")).toBe(".md");
+  });
+});
+
+describe("detectEol", () => {
+  it("uses the first line break", () => {
+    expect(detectEol("a\nb\r\nc")).toBe("\n");
+    expect(detectEol("a\r\nb\nc")).toBe("\r\n");
+    expect(detectEol("no breaks")).toBe("\n");
+    expect(detectEol("")).toBe("\n");
+    expect(detectEol("\n")).toBe("\n");
+    expect(detectEol("\r\n")).toBe("\r\n");
+  });
+});
+
+describe("BOM and EOL round trip", () => {
+  it("strips and re-adds the BOM", () => {
+    expect(stripBom("\uFEFFhi")).toEqual({ bom: true, text: "hi" });
+    expect(stripBom("hi")).toEqual({ bom: false, text: "hi" });
+    expect(toFileText("hi", "\n", true)).toBe("\uFEFFhi");
+  });
+  it("normalises CRLF to LF for the editor and back", () => {
+    expect(toEditorText("a\r\nb\r\n", "\r\n")).toBe("a\nb\n");
+    expect(toEditorText("a\nb", "\n")).toBe("a\nb");
+    expect(toFileText("a\nb\n", "\r\n", false)).toBe("a\r\nb\r\n");
+    expect(toFileText("a\nb", "\n", false)).toBe("a\nb");
+  });
+  it("is byte-faithful for consistent files", () => {
+    for (const original of ["\uFEFFone\r\ntwo\r\n", "one\ntwo", "", "no newline", "\n\n\n"]) {
+      const { bom, text } = stripBom(original);
+      const eol = detectEol(text);
+      expect(toFileText(toEditorText(text, eol), eol, bom)).toBe(original);
+    }
+  });
+});
+
+describe("looksLikeText", () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+  it("accepts UTF-8 text including an empty file", () => {
+    expect(looksLikeText(enc(""))).toBe(true);
+    expect(looksLikeText(enc("# Hello\n\nwörld — ✓"))).toBe(true);
+  });
+  it("rejects NUL bytes and invalid UTF-8", () => {
+    expect(looksLikeText(new Uint8Array([0x68, 0x00, 0x69]))).toBe(false);
+    expect(looksLikeText(new Uint8Array([0xff, 0xfe, 0x41]))).toBe(false);
+    expect(looksLikeText(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).toBe(false); // PNG header
+  });
+  it("tolerates a multi-byte character cut at the 8 KB boundary", () => {
+    const filler = "a".repeat(8 * 1024 - 2);
+    const bytes = enc(filler + "€€"); // € is 3 bytes; the sample ends 1 byte into the second €
+    expect(bytes.length).toBeGreaterThan(8 * 1024);
+    expect(looksLikeText(bytes)).toBe(true);
+  });
+  it("does not tolerate invalid bytes just because the sample is full", () => {
+    const bytes = new Uint8Array(8 * 1024 + 10).fill(0x61);
+    bytes[100] = 0xff;
+    expect(looksLikeText(bytes)).toBe(false);
+  });
+});
+
+describe("normalizeNewFileName", () => {
+  it("appends .md when there is no extension", () => {
+    expect(normalizeNewFileName("  notes ")).toEqual({ ok: true, name: "notes.md" });
+    expect(normalizeNewFileName("notes.txt")).toEqual({ ok: true, name: "notes.txt" });
+    expect(normalizeNewFileName("v1.2")).toEqual({ ok: true, name: "v1.2" });
+  });
+  it("rejects empty, dot-only and path-like names", () => {
+    expect(normalizeNewFileName("   ").ok).toBe(false);
+    expect(normalizeNewFileName("..").ok).toBe(false);
+    expect(normalizeNewFileName("a/b").ok).toBe(false);
+    expect(normalizeNewFileName("a\\b").ok).toBe(false);
+  });
+});
+
+describe("parentDir", () => {
+  it("returns the directory part, or / for root-level files", () => {
+    expect(parentDir("/Users/me/notes/a.md")).toBe("/Users/me/notes");
+    expect(parentDir("/a.md")).toBe("/");
+    expect(parentDir("a.md")).toBe("/");
+  });
+});

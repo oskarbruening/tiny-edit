@@ -1,0 +1,226 @@
+# tiny-edit — Plan & Open Questions
+
+2026-10-07. Questions in §4 were answered on 2026-10-07; the answers are recorded in §6 Decisions and reflected in `CLAUDE.md` and `docs/architecture.md`. Building starts on approval.
+
+## 1. Requirements (summarised from the brief)
+
+**Editor**
+
+- Monospace plain-text editor for `.md` / `.txt` files. Feels like a code editor, not a word processor.
+- No spellcheck, no autocorrect, no auto-capitalisation, no smart quotes/dashes. The app never changes the text; it only colours it.
+- Markdown highlighting by colour only. Syntax is never hidden and never formatted (no bigger headings, no hidden `**`).
+- Fenced code blocks (` ``` `) get basic code highlighting: keywords, strings, comments, and coloured brackets.
+
+**Sidebar**
+
+- ~200 px list of open files, extension stripped from the display name.
+- Drop any file from Finder onto the sidebar to open it. Click to switch instantly.
+
+**Persistence**
+
+- Remember window size (and position), the last open file, and per-file cursor + scroll position.
+- Autosave while typing.
+- Detect the file changing underneath (another program wrote it) and reload from disk, both while the app is running and when switching back to it.
+
+**Performance**
+
+- Incredibly fast and responsive: instant file switching, no keystroke lag, fast launch.
+
+**Window**
+
+- First launch: 750 × 500 editor area plus ~200 px sidebar → 950 × 500 window.
+
+**Process**
+
+- Research Electron best practices (done; summary in §2), adapt the hub's CLAUDE.md (draft written), full test coverage, ask lots of questions before and during code changes.
+
+## 2. Research summary (what shapes the recommendations)
+
+- **Electron 44.x** is current (Chromium 152, Node 24). Sandbox, context isolation and no Node integration are defaults; CSP, `will-navigate` denial, `setWindowOpenHandler` denial, IPC argument validation and fuses are the remaining checklist items. `File.path` is gone; Finder drops use `webUtils.getPathForFile` in the preload (Neo already does this).
+- **Scaffolding:** electron-vite (TypeScript, HMR for renderer, hot-reload for main/preload) + electron-builder for packaging is the lightest modern setup. Electron Forge's Vite template is the official alternative (one tool, fuses plugin built in). Neo uses no bundler at all, which is why it has a 228 KB single-file renderer.
+- **Editor engine:** CodeMirror 6 renders only the viewport, parses incrementally, ships first-class Markdown with nested fenced-language highlighting, and already sets `spellcheck=false autocorrect=off autocapitalize=off` on its content element. ~150 KB vs Monaco's ~2.4 MB. A textarea + overlay highlighter is tiny but can't nest code languages and re-highlights everything per keystroke on large files.
+- **Window state:** hand-rolled ~40 lines (Neo's approach, plus debouncing and display validation) or Electron 44's experimental `windowStatePersistence`. `electron-window-state` has been unmaintained since 2018.
+- **External changes:** `fs.watch` on the parent directory (atomic-save editors replace the inode), debounce, compare mtime/size with our own last write, plus a re-stat on window focus (what Brackets, Wing, UltraEdit do; Neo polls on focus + every 30 s).
+- **Atomic writes:** temp file + rename in the same directory (`write-file-atomic` or ~15 lines of our own). Neo does this for JSON but not for chapter HTML.
+- **Testing:** Vitest for unit tests (mock `electron`, real temp dirs for fs), Playwright's `_electron` for E2E, `@vitest/coverage-v8` with a threshold in config (hub uses 95 % lines).
+- **Theming (hub):** a theme is a token object (18 colour roles + base radius + font), parsed defensively, applied as CSS variables on the root; components use only variables. Six built-ins (Meadow light, Tokyo Night, Catppuccin Latte/Frappé/Macchiato/Mocha), per-user custom themes with a live-preview editor. The inventory sub-app reuses this exactly.
+- **Neo's good ideas to keep:** `domain:verb` IPC names, `role`-based menus, single-instance lock, validated window-bounds restore, save signatures so unchanged files aren't rewritten, flush on blur/visibility/quit, caret address that survives re-render.
+
+## 3. Proposed architecture (recommended defaults; every one is open to change)
+
+```
+tiny-edit/
+  src/main/        Electron main (ESM TS): app lifecycle, window, menu, IPC handlers
+    index.ts         wiring only
+    windowState.ts   bounds save/restore + display validation (debounced)
+    state.ts         state.json load/save (versioned, defensive parse, atomic)
+    files.ts         read/write (atomic), stat, path validation
+    watcher.ts       per-directory fs.watch, debounce, self-write suppression, focus re-stat
+    menu.ts          application menu (roles + relayed custom items)
+    ipc.ts           registerIpc(): every channel, argument validation
+  src/preload/     contextBridge `window.api` (CJS, bundled)
+  src/renderer/    vanilla TS (no framework) — sidebar, editor host, status/conflict bar
+    editor/          CodeMirror 6 setup, markdown + fenced languages, highlight style → CSS vars
+    sidebar/         file list, drag/drop, selection, context menu
+    theme/           token → CSS variable application, built-in themes
+    store.ts         renderer-side view state (active file, per-file cursor/scroll)
+  src/shared/      ipc.ts (channels + Api type), types.ts, themes.ts (tokens + parser)
+  tests/unit/      Vitest, mirrors src/
+  tests/e2e/       Playwright _electron
+  docs/            architecture.md, plan.md
+```
+
+**Data flow**
+
+- Launch → main loads `state.json` → creates hidden window with theme `backgroundColor` → renderer asks `state:get` → renders sidebar + opens last file (`file:read`) → restores cursor/scroll → `ready-to-show` → window shown.
+- Typing → CodeMirror update → 300 ms idle debounce → `file:write` (atomic) → main records resulting mtime so the watcher ignores it. Flush immediately on file switch, window blur, and before quit (main delays `before-quit` until the renderer acks).
+- Watcher sees a change not caused by us → `files:changed {path, mtime}` → renderer: buffer clean → reload, keep caret; buffer dirty → keep local text, show a bar "Changed on disk · Reload / Keep mine". Window focus → main re-stats all listed files → same path.
+- Drop on sidebar → preload `getPathForFile` → `files:add [paths]` → main validates (absolute, exists, regular file, text extension/looks like text) → appended to `state.files` → renderer selects it.
+
+**State file** (`~/Library/Application Support/tiny-edit/state.json`)
+
+```json
+{
+  "version": 1,
+  "window": { "x": 0, "y": 0, "width": 950, "height": 500 },
+  "sidebarWidth": 200,
+  "themeId": "catppuccin-mocha",
+  "activePath": "/Users/muse/notes/todo.md",
+  "files": [{ "path": "/Users/muse/notes/todo.md", "cursor": 1234, "scrollTop": 480 }]
+}
+```
+
+**Theme model**: hub tokens (`colors`, `radius`, `fontFamily`) + `syntax` roles (`heading`, `emphasis`, `strong`, `link`, `url`, `code`, `codeBlock`, `quote`, `listMarker`, `hr`, `keyword`, `string`, `comment`, `number`, `bracket1..3`, …). Applied as `--te-*` CSS variables on `<html>`; CodeMirror's `HighlightStyle` maps Lezer tags to those variables, so switching themes is a variable swap with no editor rebuild.
+
+**Testing plan**: unit tests for every module in `src/main` (except `index.ts`), `src/shared`, and `src/renderer` (except bootstrap); E2E for launch size, sidebar drop (simulated via IPC), switching files, autosave, external change reload/conflict bar, persistence across relaunch, theme switch, no-autocorrect behaviour (type `"` and `(`, assert nothing was inserted or changed).
+
+## 4. Questions asked (answers in §6)
+
+Recommended default in **bold**; kept for the record.
+
+### Tooling
+
+- **Q1 Scaffold:** **electron-vite + electron-builder** / Electron Forge (Vite template) / plain Electron with no bundler (Neo-style).
+- **Q2 Language:** **TypeScript (strict)** / JavaScript.
+- **Q3 Renderer UI:** **vanilla TS, no framework** (sidebar + editor host is small) / Preact / React / Svelte.
+- **Q4 Editor engine:** **CodeMirror 6** / textarea + overlay highlighter / contenteditable.
+
+### Sidebar & files
+
+- **Q5 File-list model:** **a persisted list of files you've dropped or opened (a "workspace"), in your order** / one folder whose `.md`/`.txt` files are listed automatically / both (folders and loose files).
+- **Q6 Removing a file from the list:** **right-click → Remove, and Cmd+W on the selected file; never deletes from disk** / drag out of the sidebar / other.
+- **Q7 Creating new files in-app:** **yes, Cmd+N asks for a name and saves next to the active file (or Documents if none)** / yes via a save dialog / no, only files that already exist.
+- **Q8 Sidebar ordering:** **manual drag-to-reorder, new files appended** / alphabetical / most recently used first.
+- **Q9 Accepted files:** **`.md`, `.markdown`, `.txt`, `.text`, and any file whose first 8 KB looks like UTF-8 text** / strictly `.md` and `.txt` / anything.
+- **Q10 Dropping a folder:** **add all accepted files directly inside it (not recursive)** / ignore folders / recursive.
+- **Q11 File deleted or moved while listed:** **keep it in the list greyed out; if you type, the file is recreated at the same path** / remove it from the list automatically / ask.
+- **Q12 Other file actions:** which of these? **Reveal in Finder** / **Rename (inline, renames on disk)** / Duplicate / Copy path.
+- **Q13 Open via Finder / Dock:** **register the app as an opener for `.md`/`.txt` so double-click and Dock drops add the file to the list** / no file association.
+- **Q14 Multiple windows:** **single window** / multiple windows.
+
+### Editor behaviour
+
+- **Q15 Autosave timing:** **300 ms after the last keystroke, plus flush on file switch, blur, quit** / 1 s / only on blur and switch.
+- **Q16 Conflict (disk changed AND you have unsaved local edits):** **keep local text, show a bar with Reload / Keep mine** / disk always wins / local always wins. (With 300 ms autosave this is rare.)
+- **Q17 Tab key:** **inserts a literal tab; tab width 4** / inserts 2 spaces / 4 spaces.
+- **Q18 Soft line wrap:** **on (wrap at window width)** / off, horizontal scroll / toggle in View menu, default on.
+- **Q19 Line numbers:** **off** / on / toggle.
+- **Q20 Default font:** **system monospace (SF Mono → Menlo), 14 px, Cmd +/− to zoom, remembered** / bundle JetBrains Mono / bundle another font (which?).
+- **Q21 Highlight styling scope:** **colour only, plus bold weight for `**strong**` and italic for `*em*`** / strictly colour / colour + weight + italic + underline for links.
+- **Q22 Code block languages:** **honour the fence info string (`js, `python …) with a bundled set (JS/TS, JSON, HTML, CSS, Python, Shell, SQL, YAML, Markdown, Go, Rust) and generic bracket/string/comment colouring for unknown languages** / everything in `@codemirror/language-data` lazily loaded / generic colouring only, ignore the language.
+- **Q23 Bracket colouring:** **nested brackets cycle through 3 colours inside code blocks only** / also in prose / none, single colour.
+- **Q24 Enter key:** **new line keeps the previous line's leading whitespace, nothing else** / plain newline, no indentation / Markdown list continuation (would be auto-inserting text).
+- **Q25 Find / replace:** **Cmd+F find, Cmd+Alt+F replace (CodeMirror panel, themed)** / find only / none.
+- **Q26 Line endings and final newline:** **preserve exactly what the file had (CRLF stays CRLF, no newline added)** / normalise to LF on save.
+- **Q27 Undo history:** **per file, kept while the app runs (switching files doesn't lose it), cleared on relaunch** / persisted across relaunches.
+- **Q28 Large files:** **no limit, rely on CodeMirror viewport rendering; warn above 10 MB** / refuse above a limit.
+
+### Window & state
+
+- **Q29 Sidebar:** **resizable by dragging the divider, width remembered, Cmd+\ toggles it** / fixed 200 px.
+- **Q30 Title bar:** **`hiddenInset` with traffic lights over the sidebar header, file name shown in the macOS title/proxy icon via `setRepresentedFilename`** / standard title bar.
+- **Q31 Per-file remembered state:** **cursor, selection, and scroll for every listed file** / cursor + scroll for the last file only.
+- **Q32 Window restore:** **size and position, validated against connected displays; falls back to centred 950 × 500** / size only.
+- **Q33 State storage:** **one `state.json` in userData, atomic, debounced** / `electron-store` / split files.
+
+### Theming
+
+- **Q34 Theme set:** **port the hub's six (Meadow light, Tokyo Night, Catppuccin Latte/Frappé/Macchiato/Mocha) with matching syntax palettes, pick from a View → Theme menu** / just light + dark / something else.
+- **Q35 Follow system appearance:** **option "Auto" that picks a chosen light and a chosen dark theme based on macOS appearance; default Auto** / always the chosen theme.
+- **Q36 Custom themes:** **JSON files in `userData/themes/`, hot-reloaded, "Open themes folder" menu item; no in-app editor for v1** / in-app editor with live preview like the hub / built-ins only.
+- **Q37 Fonts in themes:** **a theme may name a font family but we don't download Google Fonts; system fonts and anything bundled only** / allow Google Fonts (needs network).
+
+### Platform & distribution
+
+- **Q38 Platforms:** **macOS only for v1 (shortcuts, menus, packaging)** / macOS + Windows / all three.
+- **Q39 Signing:** **ad-hoc signed local build for personal use, no notarisation** / Developer ID + notarisation.
+- **Q40 Auto-update:** **none** / electron-updater via GitHub releases.
+- **Q41 Naming:** app name **"Tiny Edit"**, bundle id `com.ironthale.tiny-edit`? Icon: **simple generated placeholder for now**?
+
+### Process
+
+- **Q42 Coverage threshold:** **100 % lines/branches/functions on everything except `main/index.ts` and `preload/index.ts` (E2E-covered)** / 95 % like the hub.
+- **Q43 Git workflow:** **commit directly to `main` for this solo repo, commits only when you ask** / PR-per-change, you merge (hub rule) / something else. Is there (or will there be) a GitHub remote?
+- **Q44 Chat style:** **carry over the hub's terse "drop articles, use arrows" style** / normal prose.
+- **Q45 Session location check** (hub rule: confirm local vs remote before doing anything): carry over / **drop**.
+- **Q46 Anything missing?** Word count in a status bar? Cmd+click to open links? Export? Print? Spell-check toggle you can turn ON later (off by default)?
+
+## 5. Build order (once approved) — all ten steps completed 2026-10-07
+
+1. Scaffold (tooling, lint, typecheck, Vitest, Playwright, coverage gate, CI-less `npm run check`). Empty window at 950 × 500, CSP, security handlers. E2E: launches, correct size.
+2. State + window-state modules with unit tests; persistence across relaunch E2E.
+3. Files module (atomic write, validation), IPC contract, preload. Unit tests.
+4. Renderer shell: sidebar + CodeMirror host, theme variables, one built-in theme. Open/switch files, cursor/scroll restore.
+5. Autosave + flush paths; quit waits for flush.
+6. Watcher + focus re-stat; reload and conflict bar.
+7. Drag-and-drop from Finder, file association, menu, shortcuts.
+8. Markdown highlight style, fenced languages, bracket colours.
+9. Remaining themes, Auto appearance, custom theme folder.
+10. Packaging (ad-hoc signed `.app`), docs/architecture.md, CHANGELOG.
+
+## 6. Decisions (2026-10-07)
+
+| #                | Decision                                                                                                                                                                                                                                           |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1/Q2            | electron-vite + electron-builder, strict TypeScript                                                                                                                                                                                                |
+| Q3               | Vanilla TypeScript renderer, no framework                                                                                                                                                                                                          |
+| Q4               | CodeMirror 6                                                                                                                                                                                                                                       |
+| Q5               | Sidebar = persisted list of files you dropped/opened, in your order                                                                                                                                                                                |
+| Q6/Q7/Q12        | Remove from list (context menu + Cmd+W, never deletes); New file (Cmd+N, asks name, saves next to active file); Reveal in Finder; Copy path. **No rename in v1.**                                                                                  |
+| Q8/Q29           | Manual drag-to-reorder, new files appended; resizable divider, width remembered; Cmd+\ toggles sidebar                                                                                                                                             |
+| Q9/Q10           | Accept .md/.markdown/.txt/.text plus UTF-8-sniffed text; dropped folders add direct children only                                                                                                                                                  |
+| Q11/Q13          | Deleted/moved files stay listed, dimmed, recreated on typing; app registers as .md/.txt opener                                                                                                                                                     |
+| Q14              | Single window (default, not asked)                                                                                                                                                                                                                 |
+| Q15/Q16          | Autosave 300 ms idle + flush on switch/blur/quit; dirty+disk-changed → Reload / Keep mine bar                                                                                                                                                      |
+| Q17/Q24          | **Tab inserts 2 spaces**; Enter copies previous line's leading whitespace                                                                                                                                                                          |
+| Q18/Q19/Q25      | Soft wrap on, no line numbers, Cmd+F find / Cmd+Alt+F replace                                                                                                                                                                                      |
+| Q20              | System monospace (SF Mono → Menlo) 14 px, Cmd +/− zoom remembered                                                                                                                                                                                  |
+| Q21              | Colour + bold for strong + italic for emphasis                                                                                                                                                                                                     |
+| Q22/Q23          | Fence language honoured with bundled set; 3-colour nested brackets inside code blocks only                                                                                                                                                         |
+| Q26/Q27/Q28      | Preserve line endings exactly; per-file undo kept while running; no size limit, warn > 10 MB                                                                                                                                                       |
+| Q30/Q31/Q32      | hiddenInset, traffic lights over sidebar header, setRepresentedFilename; remember size + position (validated); cursor/selection/scroll per file                                                                                                    |
+| Q33              | One `state.json` in userData, atomic, debounced (default, not asked)                                                                                                                                                                               |
+| Q34/Q35          | Six hub themes ported with syntax palettes; Auto mode follows macOS with a light + dark pair; default Auto                                                                                                                                         |
+| Q36/Q37          | Custom themes as JSON in `userData/themes/`, hot-reloaded, Open Themes Folder menu item; system/bundled fonts only                                                                                                                                 |
+| Q38              | macOS only                                                                                                                                                                                                                                         |
+| Q39/Q40/Q41      | Ad-hoc signed local .app, no notarisation, no auto-update; name "Tiny Edit", bundle id `com.peleusx.tiny-edit`, icon = `logo.png` in repo root (added 2026-10-07)                                                                                  |
+| Q42              | Coverage gate 95 % lines (hub parity)                                                                                                                                                                                                              |
+| Q43              | Commit directly to `main`, only when asked                                                                                                                                                                                                         |
+| Q44/Q45          | Hub chat style (terse) and session-location check both carried over                                                                                                                                                                                |
+| Q46              | Extra: Cmd+click opens links (https/http/mailto allow-list). No status bar, no spell-check toggle                                                                                                                                                  |
+| Q47 (2026-10-07) | `file:write` has a main-side mtime/size guard: write returns a conflict result instead of overwriting; "Keep mine" writes with `force`                                                                                                             |
+| Q48 (2026-10-07) | UTF-8 BOM: stripped on read, re-added on write                                                                                                                                                                                                     |
+| Q49 (2026-10-07) | Cmd+N: append `.md` when no extension; never overwrite an existing file (prompt shows error)                                                                                                                                                       |
+| Q50 (2026-10-07) | Folder drop: direct children that are accepted text files, skipping dotfiles and symlinks, sorted by name                                                                                                                                          |
+| Q51 (2026-10-07) | Fullscreen/maximised not persisted; normal bounds are (default taken, reported)                                                                                                                                                                    |
+| Q52 (2026-10-07) | Line endings: dominant EOL detected from the first line break (CRLF vs LF), normalised to LF in the editor, re-applied on write. A file with mixed endings is unified to its first ending on save (CodeMirror itself cannot hold mixed separators) |
+| Q53 (2026-10-07) | Editor chrome: matching-bracket highlight (display only) and scroll-past-end on; no active-line tint                                                                                                                                               |
+| Q54 (2026-10-07) | No keyboard shortcuts for switching files in v1 (mouse only)                                                                                                                                                                                       |
+| Q55 (2026-10-07) | Active file missing at startup: empty editor + bar "File not found — typing will recreate it", entry dimmed                                                                                                                                        |
+| Q56 (2026-10-07) | Sidebar empty state: muted hint "Drop .md or .txt files here" + "⌘N new file"                                                                                                                                                                      |
+| Q57 (2026-10-07) | Clean background files reload silently when they change on disk (default taken, reported); dirty ones are parked and show the conflict bar when they become active                                                                                 |
+| Q58 (2026-10-07) | Failed writes show "Couldn't save <name> · Retry" and keep the buffer dirty (default taken, reported)                                                                                                                                              |
+| Q59 (2026-10-07) | Sidebar context menu is a native Electron menu (Remove from list / Reveal in Finder / Copy path)                                                                                                                                                   |
+| Q60 (2026-10-07) | Cmd+N shows an inline name input at the bottom of the sidebar list; Enter creates next to the active file (Documents when the list is empty), Esc cancels, errors inline                                                                           |
+| Q61 (2026-10-07) | Files may be dropped anywhere in the window; the sidebar highlights while dragging; nothing is ever inserted into the text                                                                                                                         |
+| Q62 (2026-10-07) | Dark-theme syntax palettes use the canonical Tokyo Night / Catppuccin colours (default taken, reported)                                                                                                                                            |
