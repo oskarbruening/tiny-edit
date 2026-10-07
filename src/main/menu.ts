@@ -2,6 +2,7 @@ import type { MenuItemConstructorOptions } from "electron";
 import type { MenuAction } from "../shared/ipc";
 import type { ThemeState } from "../shared/state";
 import type { Theme } from "../shared/themes";
+import { APP_NAME } from "../shared/constants";
 
 export type MenuDeps = {
   /** Relay a command to the renderer. */
@@ -58,6 +59,7 @@ export function themeSubmenu(
  * The macOS application menu. Standard roles where they exist; everything app-specific is
  * relayed to the renderer as a MenuAction. Accelerators here take precedence over the
  * page, which is why Find lives here too (it must work while the sidebar has focus).
+ * The app menu is spelled out (not `role: "appMenu"`) so Settings… can sit in its usual place.
  */
 export function menuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] {
   const { send, openDialog, isDev } = deps;
@@ -82,7 +84,27 @@ export function menuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] {
   ];
   if (isDev) view.push({ type: "separator" }, { role: "toggleDevTools" }, { role: "reload" });
   return [
-    { role: "appMenu" },
+    {
+      label: APP_NAME,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        {
+          id: "settings",
+          label: "Settings…",
+          accelerator: "CmdOrCtrl+,",
+          click: relay({ type: "openSettings" }),
+        },
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    },
     {
       label: "File",
       submenu: [

@@ -1,0 +1,131 @@
+/* Settings panel (App menu → Settings…, Cmd+,). Colours come from --te-* tokens only. */
+
+.settings {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 56px;
+  background: color-mix(in srgb, var(--te-inverse-surface) 35%, transparent);
+  -webkit-app-region: no-drag;
+}
+
+.settings__panel {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  padding: 18px 22px 16px;
+  color: var(--te-ink);
+  background: var(--te-card);
+  border: 1px solid var(--te-line);
+  border-radius: var(--te-radius-md);
+  box-shadow: 0 12px 40px color-mix(in srgb, var(--te-inverse-surface) 30%, transparent);
+  font-size: 13px;
+  outline: none;
+}
+
+.settings__title {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings__section {
+  padding: 10px 0;
+  border-top: 1px solid var(--te-line);
+}
+
+.settings__heading {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--te-muted);
+}
+
+.settings__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+}
+
+.settings__row--indent {
+  padding-left: 22px;
+}
+
+.settings__label {
+  flex: 0 0 110px;
+  color: var(--te-ink);
+}
+
+.settings__label--radio {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings__radio,
+.settings__select,
+.settings__font {
+  accent-color: var(--te-primary);
+}
+
+.settings__select {
+  flex: 1;
+  font: inherit;
+  padding: 3px 6px;
+  color: var(--te-ink);
+  background: var(--te-surface);
+  border: 1px solid var(--te-line);
+  border-radius: var(--te-radius-sm);
+}
+
+.settings__select:disabled {
+  color: var(--te-muted);
+  opacity: 0.6;
+}
+
+.settings__font {
+  flex: 1;
+  margin: 0;
+}
+
+.settings__font-value {
+  flex: 0 0 44px;
+  text-align: right;
+  color: var(--te-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 12px;
+  border-top: 1px solid var(--te-line);
+}
+
+.settings__done {
+  font: inherit;
+  padding: 4px 14px;
+  color: var(--te-on-primary);
+  background: var(--te-primary);
+  border: 1px solid var(--te-primary);
+  border-radius: var(--te-radius-sm);
+  cursor: default;
+}
+
+.settings__done:hover {
+  filter: brightness(1.08);
+}
+
+.settings__done:focus-visible,
+.settings__select:focus-visible,
+.settings__font:focus-visible {
+  outline: 2px solid var(--te-primary-container);
+  outline-offset: 1px;
+}

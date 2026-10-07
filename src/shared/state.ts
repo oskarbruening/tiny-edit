@@ -26,6 +26,17 @@ export type StatePatch = Partial<
 
 export const SIDEBAR_WIDTH_RANGE = { min: 120, max: 600 } as const;
 export const FONT_SIZE_RANGE = { min: 8, max: 48 } as const;
+/** The Settings slider's five sizes; the default (14 px) is the middle step. */
+export const FONT_SIZE_STEPS = [10, 12, 14, 16, 18] as const;
+export const DEFAULT_FONT_SIZE: (typeof FONT_SIZE_STEPS)[2] = 14;
+
+/** Index into FONT_SIZE_STEPS nearest to a size (zoom can land between steps). Ties round up. */
+export function nearestFontStep(fontSize: number): number {
+  let best = 0;
+  for (let i = 1; i < FONT_SIZE_STEPS.length; i++)
+    if (Math.abs(FONT_SIZE_STEPS[i]! - fontSize) <= Math.abs(FONT_SIZE_STEPS[best]! - fontSize)) best = i;
+  return best;
+}
 
 export function defaultState(): AppState {
   return {
@@ -33,7 +44,7 @@ export function defaultState(): AppState {
     window: { ...DEFAULT_WINDOW },
     sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
     sidebarVisible: true,
-    fontSize: 14,
+    fontSize: DEFAULT_FONT_SIZE,
     theme: { mode: "auto", light: "meadow", dark: "catppuccin-mocha", fixed: "meadow" },
     activePath: null,
     files: [],

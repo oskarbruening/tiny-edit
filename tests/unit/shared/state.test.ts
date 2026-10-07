@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_FONT_SIZE,
   defaultState,
+  FONT_SIZE_STEPS,
+  nearestFontStep,
   parseFiles,
   parsePatch,
   parseState,
@@ -92,6 +95,23 @@ describe("parseWindowBounds", () => {
     expect(parseWindowBounds({}, fb)).toEqual(fb);
     expect(parseWindowBounds(null, fb)).toEqual(fb);
     expect(parseWindowBounds({ width: NaN, height: Infinity }, fb)).toEqual(fb);
+  });
+});
+
+describe("font-size steps", () => {
+  it("has five steps two px apart with the default in the middle", () => {
+    expect(FONT_SIZE_STEPS).toEqual([10, 12, 14, 16, 18]);
+    expect(FONT_SIZE_STEPS[2]).toBe(DEFAULT_FONT_SIZE);
+    expect(defaultState().fontSize).toBe(DEFAULT_FONT_SIZE);
+  });
+
+  it("snaps any size to the nearest step, ties rounding up, extremes clamped", () => {
+    expect(nearestFontStep(14)).toBe(2);
+    expect(nearestFontStep(15)).toBe(3);
+    expect(nearestFontStep(13)).toBe(2);
+    expect(nearestFontStep(10.9)).toBe(0);
+    expect(nearestFontStep(8)).toBe(0);
+    expect(nearestFontStep(48)).toBe(4);
   });
 });
 

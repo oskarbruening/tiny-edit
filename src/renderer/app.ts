@@ -1,6 +1,6 @@
 import { openSearchPanel } from "@codemirror/search";
 import type { Api, MenuAction } from "../shared/ipc";
-import { FONT_SIZE_RANGE, SIDEBAR_WIDTH_RANGE, type AppState } from "../shared/state";
+import { DEFAULT_FONT_SIZE, FONT_SIZE_RANGE, SIDEBAR_WIDTH_RANGE, type AppState } from "../shared/state";
 import { displayName, parentDir } from "../shared/text";
 import { resolveTheme, type Appearance, type Theme } from "../shared/themes";
 import { applyTheme } from "./theme/apply";
@@ -9,6 +9,7 @@ import { installDropzone } from "./dropzone";
 import { Autosave, type FileMeta } from "./autosave";
 import { Editor } from "./editor/editor";
 import { Notice } from "./notice";
+import { Settings } from "./settings/settings";
 import { reorder, Sidebar } from "./sidebar/sidebar";
 import { Store } from "./store";
 
@@ -18,9 +19,10 @@ export type Shell = {
   divider: HTMLElement;
   editorHost: HTMLElement;
   noticeHost: HTMLElement;
+  settingsHost: HTMLElement;
 };
 
-/** Builds the static shell: sidebar on the left, notice bar + editor host on the right. */
+/** Builds the static shell: sidebar on the left, notice bar + editor host on the right, settings overlay. */
 export function mount(root: HTMLElement): Shell {
   root.replaceChildren();
 
@@ -36,8 +38,9 @@ export function mount(root: HTMLElement): Shell {
   const editorHost = el("div", "editor__host");
   editor.append(el("div", "editor__titlebar"), noticeHost, editorHost);
 
-  root.append(sidebar, editor);
-  return { sidebar, list, divider, editorHost, noticeHost };
+  const settingsHost = el("div", "settings");
+  root.append(sidebar, editor, settingsHost);
+  return { sidebar, list, divider, editorHost, noticeHost, settingsHost };
 }
 
 /** Pushes persisted view settings into CSS variables on the root element. */
@@ -56,6 +59,7 @@ export type App = {
   editor: Editor;
   sidebar: Sidebar;
   notice: Notice;
+  settings: Settings;
   autosave: Autosave;
   meta: Map<string, FileMeta>;
   missing: Set<string>;
@@ -91,6 +95,16 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     applyTheme(doc.documentElement, resolveTheme(store.get().theme, themes, appearance));
   paintTheme();
   const notice = new Notice(shell.noticeHost);
+  const settings = new Settings(shell.settingsHost, {
+    onTheme: (theme) => store.patch({ theme }),
+    onFontSize: (fontSize) => store.patch({ fontSize }),
+    onClose: () => {
+      if (editor.currentPath) editor.view.focus();
+    },
+  });
+  const syncSettings = (): void =>
+    settings.update({ theme: store.get().theme, fontSize: store.get().fontSize, themes });
+  syncSettings();
   const missing = new Set<string>();
   /** Files whose disk copy changed while they had unsaved edits; the bar shows when they are active. */
   const conflicts = new Set<string>();
@@ -253,6 +267,9 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
       case "toggleSidebar":
         store.patch({ sidebarVisible: !store.get().sidebarVisible });
         break;
+      case "openSettings":
+        settings.toggle();
+        break;
       case "setThemeMode":
         store.patch({ theme: { ...store.get().theme, mode: "auto" } });
         break;
@@ -266,7 +283,8 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
       case "zoomOut":
       case "zoomReset": {
         const current = store.get().fontSize;
-        const next = action.type === "zoomReset" ? 14 : current + (action.type === "zoomIn" ? 1 : -1);
+        const next =
+          action.type === "zoomReset" ? DEFAULT_FONT_SIZE : current + (action.type === "zoomIn" ? 1 : -1);
         store.patch({ fontSize: Math.min(FONT_SIZE_RANGE.max, Math.max(FONT_SIZE_RANGE.min, next)) });
         break;
       }
@@ -289,10 +307,12 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
   const unsubscribeStore = store.subscribe(() => {
     applyViewState(doc.documentElement, store.get());
     paintTheme();
+    syncSettings();
   });
   const unsubscribeThemes = api.onThemesChanged((list: Theme[]) => {
     themes = list;
     paintTheme();
+    syncSettings();
   });
   const unsubscribeAppearance = api.onAppearanceChanged((next: Appearance) => {
     appearance = next;
@@ -333,6 +353,7 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     editor,
     sidebar,
     notice,
+    settings,
     autosave,
     meta,
     missing,
