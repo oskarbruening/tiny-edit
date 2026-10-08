@@ -1,4 +1,4 @@
-import { DEFAULT_FONT_SIZE, FONT_SIZE_STEPS, nearestFontStep, type ThemeState } from "../../shared/state";
+import { FONT_SLIDER_RANGE, type ThemeState } from "../../shared/state";
 import type { Appearance, Theme } from "../../shared/themes";
 
 export type SettingsSnapshot = {
@@ -20,7 +20,7 @@ export const SETTINGS_TITLE = "Settings";
 
 /**
  * The in-window Settings panel (App menu → Settings…, Cmd+,): theme mode and pick, the
- * five-step font-size slider and the syntax-highlighting switch. Pure DOM; the app feeds it state via `update()` and persists
+ * font-size slider (1 px steps) and the syntax-highlighting switch. Pure DOM; the app feeds it state via `update()` and persists
  * what the hooks report. Esc, the backdrop and Done close it.
  */
 export class Settings {
@@ -93,12 +93,12 @@ export class Settings {
     // ── Editor ──
     this.fontSlider = el("input", "settings__font");
     this.fontSlider.type = "range";
-    this.fontSlider.min = "1";
-    this.fontSlider.max = String(FONT_SIZE_STEPS.length);
+    this.fontSlider.min = String(FONT_SLIDER_RANGE.min);
+    this.fontSlider.max = String(FONT_SLIDER_RANGE.max);
     this.fontSlider.step = "1";
     this.fontSlider.addEventListener("input", () => {
-      // A range input only ever holds an integer in [min, max]; the fallback guards a hand-built DOM.
-      const px = FONT_SIZE_STEPS[Number(this.fontSlider.value) - 1] ?? DEFAULT_FONT_SIZE;
+      // A range input only ever holds an integer in [min, max] (the DOM sanitises its value).
+      const px = Number(this.fontSlider.value);
       this.fontValue.textContent = `${px} px`;
       this.hooks.onFontSize(px);
     });
@@ -139,9 +139,11 @@ export class Settings {
     this.lightSelect.disabled = !auto;
     this.darkSelect.disabled = !auto;
     this.fixedSelect.disabled = auto;
-    const step = nearestFontStep(fontSize);
-    this.fontSlider.value = String(step + 1);
-    this.fontValue.textContent = `${FONT_SIZE_STEPS[step]} px`;
+    // A zoomed size outside the slider's range pins the thumb to the end but shows the real size.
+    this.fontSlider.value = String(
+      Math.min(FONT_SLIDER_RANGE.max, Math.max(FONT_SLIDER_RANGE.min, fontSize)),
+    );
+    this.fontValue.textContent = `${fontSize} px`;
     this.highlightBox.checked = highlight;
   }
 

@@ -10,6 +10,7 @@ import {
 import type { Api, FilesOpened, MenuAction, WatchChanged, WatchMissing } from "../../../src/shared/ipc";
 import { BUILTIN_THEMES, MEADOW, type Appearance, type Theme } from "../../../src/shared/themes";
 import { defaultState, type AppState } from "../../../src/shared/state";
+import { WELCOME_PAGE, WHATS_NEW_PAGE } from "../../../src/renderer/pages/pages";
 
 function fakeApi(state: AppState, contents: Record<string, string>) {
   let opened: ((p: FilesOpened) => void) | null = null;
@@ -525,6 +526,43 @@ describe("boot", () => {
     });
   });
 
+  describe("read-only pages", () => {
+    it("shows the welcome page when no file is selected; it is read-only and never saved", async () => {
+      const f = fakeApi(defaultState(), {});
+      const app = await boot(document.createElement("div"), f.api);
+      apps.push(app);
+      expect(app.editor.currentPath).toBeNull();
+      expect(app.editor.view.state.doc.toString()).toBe(WELCOME_PAGE);
+      expect(app.editor.view.state.readOnly).toBe(true);
+      expect(WELCOME_PAGE).toMatch(/^# Welcome to Tiny Edit/);
+      expect(WELCOME_PAGE).toContain("saved");
+      expect(f.api.writeFile).not.toHaveBeenCalled();
+    });
+
+    it("Help → What's New saves and deselects the active file, then shows the page; the file reopens intact", async () => {
+      const f = fakeApi(twoFiles(), { "/a.md": "aaa", "/b.md": "bbb" });
+      const app = await boot(document.createElement("div"), f.api);
+      apps.push(app);
+      app.editor.view.dispatch({ changes: { from: 0, insert: "x" } });
+      f.menu({ type: "showWhatsNew" });
+      await vi.waitFor(() => expect(app.editor.currentPath).toBeNull());
+      expect(f.disk["/a.md"]).toBe("xaaa");
+      expect(app.editor.view.state.doc.toString()).toBe(WHATS_NEW_PAGE);
+      expect(app.editor.view.state.readOnly).toBe(true);
+      expect(app.store.get().activePath).toBeNull();
+      expect(app.shell.list.querySelector(".is-active")).toBeNull();
+      expect(WHATS_NEW_PAGE).toMatch(/^# What's New in Tiny Edit/);
+      expect(WHATS_NEW_PAGE).toMatch(/^## \d+\.\d+\.\d+ — \d{4}-\d{2}-\d{2}$/m);
+      await app.openFile("/a.md");
+      expect(app.editor.view.state.doc.toString()).toBe("xaaa");
+      expect(app.store.get().activePath).toBe("/a.md");
+      // With nothing active the page still shows.
+      await app.showPage("page");
+      await app.showPage(WHATS_NEW_PAGE);
+      expect(app.editor.view.state.doc.toString()).toBe(WHATS_NEW_PAGE);
+    });
+  });
+
   describe("menu actions and removal", () => {
     it("Cmd+W / closeFile saves pending edits, removes the active file, and opens its neighbour", async () => {
       const f = fakeApi(twoFiles(), { "/a.md": "aaa", "/b.md": "bbb" });
@@ -541,6 +579,7 @@ describe("boot", () => {
       f.menu({ type: "closeFile" });
       await vi.waitFor(() => expect(app.editor.currentPath).toBeNull());
       expect(app.shell.list.querySelector(".sidebar__empty")).not.toBeNull();
+      expect(app.editor.view.state.doc.toString()).toBe(WELCOME_PAGE); // last file closed → welcome page
       f.menu({ type: "closeFile" }); // nothing active: no-op
       await app.removeFile("/zzz.md");
     });
@@ -639,8 +678,8 @@ describe("boot", () => {
       expect(app.shell.settingsHost.hidden).toBe(false);
 
       const slider = app.shell.settingsHost.querySelector<HTMLInputElement>(".settings__font")!;
-      expect(slider.value).toBe("3");
-      slider.value = "5";
+      expect(slider.value).toBe("14");
+      slider.value = "18";
       slider.dispatchEvent(new Event("input", { bubbles: true }));
       expect(app.store.get().fontSize).toBe(18);
       expect(document.documentElement.style.getPropertyValue("--te-font-size")).toBe("18px");
@@ -659,13 +698,13 @@ describe("boot", () => {
       expect(app.store.get().highlight).toBe(true);
       expect(document.documentElement.classList.contains("highlight-off")).toBe(false);
 
-      // Zoom from the menu lands between steps; the slider snaps to the nearest one.
+      // Zoom from the menu moves the slider 1 px at a time.
       app.handleMenuAction({ type: "zoomOut" });
       expect(app.store.get().fontSize).toBe(17);
-      expect(slider.value).toBe("5");
+      expect(slider.value).toBe("17");
       app.handleMenuAction({ type: "zoomOut" });
       app.handleMenuAction({ type: "zoomOut" });
-      expect(slider.value).toBe("4");
+      expect(slider.value).toBe("15");
 
       const fixed = app.shell.settingsHost.querySelector<HTMLInputElement>("#settings-mode-fixed")!;
       fixed.checked = true;
@@ -765,12 +804,12 @@ describe("boot", () => {
   describe("themes", () => {
     const surface = () => document.documentElement.style.getPropertyValue("--te-surface");
 
-    it("paints the resolved theme at boot (auto + light appearance → Meadow)", async () => {
+    it("paints the resolved theme at boot (auto + light appearance → macOS Light)", async () => {
       const f = fakeApi(defaultState(), {});
       const app = await boot(document.createElement("div"), f.api);
       apps.push(app);
-      expect(app.currentTheme().id).toBe("meadow");
-      expect(surface()).toBe("#fbf9f7");
+      expect(app.currentTheme().id).toBe("macos-light");
+      expect(surface()).toBe("#ffffff");
       expect(document.documentElement.dataset["appearance"]).toBe("light");
     });
 
@@ -783,7 +822,7 @@ describe("boot", () => {
       expect(surface()).toBe("#1a1b26");
       expect(f.state().theme).toMatchObject({ mode: "fixed", fixed: "tokyo-night" });
       app.handleMenuAction({ type: "setThemeMode", mode: "auto" });
-      expect(app.currentTheme().id).toBe("meadow");
+      expect(app.currentTheme().id).toBe("macos-light");
       app.handleMenuAction({ type: "setAutoTheme", appearance: "light", id: "catppuccin-latte" });
       expect(app.currentTheme().id).toBe("catppuccin-latte");
       expect(f.state().theme).toMatchObject({ mode: "auto", light: "catppuccin-latte" });
@@ -794,10 +833,10 @@ describe("boot", () => {
       const app = await boot(document.createElement("div"), f.api);
       apps.push(app);
       f.appearance("dark");
-      expect(app.currentTheme().id).toBe("catppuccin-mocha");
-      expect(surface()).toBe("#1e1e2e");
+      expect(app.currentTheme().id).toBe("macos-dark");
+      expect(surface()).toBe("#1e1e1e");
       app.handleMenuAction({ type: "setTheme", id: "mine" }); // not known yet → falls back
-      expect(app.currentTheme().id).toBe("meadow");
+      expect(app.currentTheme().id).toBe("macos-light");
       const mine: Theme = {
         ...MEADOW,
         id: "mine",

@@ -21,7 +21,14 @@ const base = () => ({
 describe("menuTemplate", () => {
   it("has the standard macOS structure with roles", () => {
     const t = menuTemplate(base());
-    expect(t.map((m) => m.role ?? m.label)).toEqual(["Tiny Edit", "File", "Edit", "View", "windowMenu"]);
+    expect(t.map((m) => m.role ?? m.label)).toEqual([
+      "Tiny Edit",
+      "File",
+      "Edit",
+      "View",
+      "windowMenu",
+      "help",
+    ]);
     const roles = flatten(t)
       .map((i) => i.role)
       .filter(Boolean);
@@ -66,6 +73,14 @@ describe("menuTemplate", () => {
     expect(settings.accelerator).toBe("CmdOrCtrl+,");
     click(settings);
     expect(deps.send).toHaveBeenCalledWith({ type: "openSettings" });
+  });
+
+  it("Help → What's New relays showWhatsNew", () => {
+    const deps = base();
+    const item = byId(menuTemplate(deps), "whats-new");
+    expect(item.label).toBe("What's New");
+    click(item);
+    expect(deps.send).toHaveBeenCalledWith({ type: "showWhatsNew" });
   });
 
   it("puts the Theme submenu in View", () => {

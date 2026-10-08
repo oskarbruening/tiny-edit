@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FONT_SIZE,
   defaultState,
-  FONT_SIZE_STEPS,
-  nearestFontStep,
+  FONT_SLIDER_RANGE,
   parseFiles,
   parsePatch,
   parseState,
@@ -101,20 +100,22 @@ describe("parseWindowBounds", () => {
   });
 });
 
-describe("font-size steps", () => {
-  it("has five steps two px apart with the default in the middle", () => {
-    expect(FONT_SIZE_STEPS).toEqual([10, 12, 14, 16, 18]);
-    expect(FONT_SIZE_STEPS[2]).toBe(DEFAULT_FONT_SIZE);
+describe("font-size slider range", () => {
+  it("spans 10-18 px with the default inside it", () => {
+    expect(FONT_SLIDER_RANGE).toEqual({ min: 10, max: 18 });
+    expect(DEFAULT_FONT_SIZE).toBe(14);
     expect(defaultState().fontSize).toBe(DEFAULT_FONT_SIZE);
   });
+});
 
-  it("snaps any size to the nearest step, ties rounding up, extremes clamped", () => {
-    expect(nearestFontStep(14)).toBe(2);
-    expect(nearestFontStep(15)).toBe(3);
-    expect(nearestFontStep(13)).toBe(2);
-    expect(nearestFontStep(10.9)).toBe(0);
-    expect(nearestFontStep(8)).toBe(0);
-    expect(nearestFontStep(48)).toBe(4);
+describe("default theme", () => {
+  it("is Automatic with macOS Light / macOS Dark, Fixed on macOS Light", () => {
+    expect(defaultState().theme).toEqual({
+      mode: "auto",
+      light: "macos-light",
+      dark: "macos-dark",
+      fixed: "macos-light",
+    });
   });
 });
 

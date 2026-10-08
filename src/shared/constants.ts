@@ -7,8 +7,8 @@ export const DEFAULT_WINDOW = {
 } as const;
 export const MIN_WINDOW = { width: 400, height: 300 } as const;
 
-/** Surface colour of the default (Meadow) theme; painted behind the renderer so there is no flash. */
-export const DEFAULT_BACKGROUND = "#fbf9f7";
+/** Surface colour of the default light theme (macOS Light); painted behind the renderer so there is no flash. */
+export const DEFAULT_BACKGROUND = "#ffffff";
 
 export const APP_NAME = "Tiny Edit";
 

@@ -118,6 +118,7 @@ export type MenuAction =
   | { type: "replace" }
   | { type: "toggleSidebar" }
   | { type: "openSettings" }
+  | { type: "showWhatsNew" }
   | { type: "zoomIn" }
   | { type: "zoomOut" }
   | { type: "zoomReset" }

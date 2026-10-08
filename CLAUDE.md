@@ -63,6 +63,8 @@ From the brief and Neo's CONTRIBUTING ground rules. They beat convenience and "i
 - `docs/architecture.md`: purpose, process model, data flow, state-file shape, IPC channels, theme model, fundamental guidelines. **Update it in the same change** whenever any of those change. High level; no line-by-line code docs.
 - `docs/plan.md` §Decisions: append one dated line per decision taken with the user.
 - `CHANGELOG.md`: one user-facing line per behaviour change, newest first, dated `YYYY-MM-DD`, max 10 entries in the "Unreleased" block before a version is cut.
+- `src/renderer/pages/whats-new.md` (Help → What's New, bundled into the app): **update it in the same change as every user-facing behaviour change**, alongside `CHANGELOG.md`. Plain, friendly wording for users (no file names, no internals), one bold-led bullet per change, newest first under `## Unreleased`. When a version is cut, rename that block to `## <version> — YYYY-MM-DD`. The welcome page (`src/renderer/pages/welcome.md`) describes autosave, highlighting and features; update it when one of those changes.
+- **Versioning.** `package.json` `version` is the app version (semver). Before creating a PR, ask the user whether to bump it: show the current version and the changes since the last version, and ask which version to change to (suggest patch / minor). On a bump, update `package.json`, rename the "Unreleased" blocks in `CHANGELOG.md` and `whats-new.md` to the new version, and commit them in the PR.
 
 ## Git Workflow
 

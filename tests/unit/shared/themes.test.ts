@@ -7,6 +7,8 @@ import {
   DEFAULT_DARK_ID,
   DEFAULT_LIGHT_ID,
   luminance,
+  MACOS_DARK,
+  MACOS_LIGHT,
   MEADOW,
   parseThemeTokens,
   parseUserTheme,
@@ -46,8 +48,8 @@ describe("built-in themes", () => {
       for (const v of Object.values(t.tokens.syntax)) expect(v, t.id).toMatch(HEX);
       expect(t.tokens.radius).toBeGreaterThanOrEqual(0);
     }
-    expect(DEFAULT_LIGHT_ID).toBe(MEADOW.id);
-    expect(DEFAULT_DARK_ID).toBe(CATPPUCCIN_MOCHA.id);
+    expect(DEFAULT_LIGHT_ID).toBe(MACOS_LIGHT.id);
+    expect(DEFAULT_DARK_ID).toBe(MACOS_DARK.id);
     expect(defaultState().theme).toEqual({
       mode: "auto",
       light: DEFAULT_LIGHT_ID,
