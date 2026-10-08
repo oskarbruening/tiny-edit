@@ -147,6 +147,7 @@ describe("themeSubmenu", () => {
       "Catppuccin Frappé",
       "Catppuccin Macchiato",
       "Catppuccin Mocha",
+      "macOS Light",
       "macOS Dark",
       "Mine (custom)",
     ]);
@@ -158,7 +159,7 @@ describe("themeSubmenu", () => {
 
     const light = byId(items, "auto-light").submenu as MenuItemConstructorOptions[];
     const dark = byId(items, "auto-dark").submenu as MenuItemConstructorOptions[];
-    expect(light.map((i) => i.label)).toEqual(["Meadow", "Catppuccin Latte", "Mine (custom)"]);
+    expect(light.map((i) => i.label)).toEqual(["Meadow", "Catppuccin Latte", "macOS Light", "Mine (custom)"]);
     expect(light.find((i) => i.checked)?.id).toBe("auto-light-meadow");
     expect(dark.find((i) => i.checked)?.id).toBe("auto-dark-catppuccin-mocha");
     click(byId(items, "auto-dark-tokyo-night"));

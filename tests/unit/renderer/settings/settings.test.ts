@@ -54,7 +54,11 @@ describe("Settings", () => {
     const light = q<HTMLSelectElement>(".settings__light");
     const dark = q<HTMLSelectElement>(".settings__dark");
     const fixed = q<HTMLSelectElement>(".settings__fixed");
-    expect([...light.options].map((o) => o.textContent)).toEqual(["Meadow", "Catppuccin Latte"]);
+    expect([...light.options].map((o) => o.textContent)).toEqual([
+      "Meadow",
+      "Catppuccin Latte",
+      "macOS Light",
+    ]);
     expect([...dark.options].map((o) => o.value)).toEqual([
       "tokyo-night",
       "catppuccin-frappe",
@@ -64,7 +68,7 @@ describe("Settings", () => {
     ]);
     expect(light.value).toBe("meadow");
     expect(dark.value).toBe("catppuccin-mocha");
-    expect(fixed.options).toHaveLength(7);
+    expect(fixed.options).toHaveLength(8);
     expect(fixed.disabled).toBe(true);
     expect(light.disabled).toBe(false);
     expect(q<HTMLInputElement>(".settings__font").value).toBe("3");
