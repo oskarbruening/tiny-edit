@@ -19,7 +19,7 @@ import {
 const HEX = /^#[0-9a-f]{6}$/;
 
 describe("built-in themes", () => {
-  it("has six distinct, valid themes with the agreed defaults", () => {
+  it("has seven distinct, valid themes with the agreed defaults", () => {
     expect(BUILTIN_THEMES.map((t) => t.id)).toEqual([
       "meadow",
       "tokyo-night",
@@ -27,11 +27,13 @@ describe("built-in themes", () => {
       "catppuccin-frappe",
       "catppuccin-macchiato",
       "catppuccin-mocha",
+      "macos-dark",
     ]);
     expect(BUILTIN_THEMES.map((t) => t.appearance)).toEqual([
       "light",
       "dark",
       "light",
+      "dark",
       "dark",
       "dark",
       "dark",

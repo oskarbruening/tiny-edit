@@ -147,6 +147,7 @@ describe("themeSubmenu", () => {
       "Catppuccin Frappé",
       "Catppuccin Macchiato",
       "Catppuccin Mocha",
+      "macOS Dark",
       "Mine (custom)",
     ]);
     expect(items.filter((i) => i.type === "radio" && i.checked)).toHaveLength(1);

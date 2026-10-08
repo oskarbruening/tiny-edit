@@ -456,6 +456,65 @@ export const CATPPUCCIN_MOCHA: Theme = theme(
   6,
 );
 
+/** macOS Dark: Apple's system dark appearance. textBackground surface, systemBlue accent,
+ * SF Mono via the system default; syntax follows Xcode's Default (Dark) accents. */
+export const MACOS_DARK: Theme = theme(
+  "macos-dark",
+  "macOS Dark",
+  "dark",
+  {
+    primary: "#0a84ff",
+    card: "#2a2a2c",
+    onPrimary: "#ffffff",
+    primaryContainer: "#0b3a66",
+    onPrimaryContainer: "#d4e4ff",
+    secondaryContainer: "#2e2e30",
+    surface: "#1e1e1e",
+    surfaceContainer: "#262628",
+    surfaceContainerHigh: "#303032",
+    line: "#3a3a3c",
+    ink: "#f5f5f7",
+    muted: "#98989d",
+    sel: "#3f638b",
+    danger: "#ff453a",
+    dangerContainer: "#48201c",
+    inverseSurface: "#f5f5f7",
+    inverseOnSurface: "#1e1e1e",
+    inversePrimary: "#409cff",
+  },
+  {
+    heading: "#0a84ff",
+    strong: "#f5f5f7",
+    emphasis: "#f5f5f7",
+    link: "#0a84ff",
+    url: "#98989d",
+    inlineCode: "#ff8170",
+    quote: "#98989d",
+    listMarker: "#ff9f0a",
+    hr: "#48484a",
+    marker: "#6c6c70",
+    codeFence: "#6c6c70",
+    htmlTag: "#ff7ab2",
+    bracketMatch: "#3f638b",
+    keyword: "#ff7ab2",
+    string: "#ff8170",
+    number: "#d9c97c",
+    comment: "#7f8c98",
+    operator: "#ff7ab2",
+    type: "#5dd8ff",
+    function: "#67b7a4",
+    property: "#64d2ff",
+    variable: "#f5f5f7",
+    atom: "#d9c97c",
+    meta: "#ff9f0a",
+    invalid: "#ff453a",
+    bracket1: "#ff9f0a",
+    bracket2: "#bf5af2",
+    bracket3: "#64d2ff",
+  },
+  6,
+);
+
 export const BUILTIN_THEMES: readonly Theme[] = [
   MEADOW,
   TOKYO_NIGHT,
@@ -463,6 +522,7 @@ export const BUILTIN_THEMES: readonly Theme[] = [
   CATPPUCCIN_FRAPPE,
   CATPPUCCIN_MACCHIATO,
   CATPPUCCIN_MOCHA,
+  MACOS_DARK,
 ];
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
