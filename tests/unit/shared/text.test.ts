@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  abbreviateHome,
+  baseName,
   ACCEPTED_EXTENSIONS,
   HIDDEN_EXTENSIONS,
   decodeUtf8,
   decodeUtf8Lossy,
+  formatOf,
   parentDir,
   detectEol,
   displayName,
@@ -44,6 +47,23 @@ describe("extensionOf / isAcceptedExtension / displayName", () => {
     expect(new Set(ACCEPTED_EXTENSIONS).size).toBe(ACCEPTED_EXTENSIONS.length); // no duplicates
     for (const ext of ACCEPTED_EXTENSIONS) expect(ext).toMatch(/^\.[a-z0-9]+$/);
     for (const ext of HIDDEN_EXTENSIONS) expect(ACCEPTED_EXTENSIONS).toContain(ext);
+  });
+  it("maps extensions to a structured format for highlighting and Pretty Format", () => {
+    expect(formatOf("/x/a.md")).toBe("markdown");
+    expect(formatOf("/x/a.markdown")).toBe("markdown");
+    expect(formatOf("/x/a.json")).toBe("json");
+    expect(formatOf("/x/a.jsonc")).toBe("json");
+    expect(formatOf("/x/a.HTML")).toBe("html");
+    expect(formatOf("/x/a.htm")).toBe("html");
+    expect(formatOf("/x/a.xml")).toBe("xml");
+    expect(formatOf("/x/a.svg")).toBe("xml");
+    expect(formatOf("/x/a.yaml")).toBe("yaml");
+    expect(formatOf("/x/a.yml")).toBe("yaml");
+    // Plain text, source code and TOML have no Pretty Format (TOML still highlights — see topLanguage).
+    expect(formatOf("/x/a.txt")).toBeNull();
+    expect(formatOf("/x/a.ts")).toBeNull();
+    expect(formatOf("/x/a.toml")).toBeNull();
+    expect(formatOf("/x/noext")).toBeNull();
   });
   it("hides only the Markdown / text extensions in the sidebar label, keeps the rest visible", () => {
     expect(isHiddenExtension("a.md")).toBe(true);
@@ -157,5 +177,22 @@ describe("parentDir", () => {
     expect(parentDir("/Users/me/notes/a.md")).toBe("/Users/me/notes");
     expect(parentDir("/a.md")).toBe("/");
     expect(parentDir("a.md")).toBe("/");
+  });
+});
+
+describe("baseName", () => {
+  it("returns the final segment with its extension, for either separator", () => {
+    expect(baseName("/Users/me/notes/a.md")).toBe("a.md");
+    expect(baseName("a.md")).toBe("a.md");
+    expect(baseName("C:\\x\\y.txt")).toBe("y.txt");
+  });
+});
+
+describe("abbreviateHome", () => {
+  it("replaces a leading home directory with ~, otherwise leaves the path", () => {
+    expect(abbreviateHome("/Users/me/work", "/Users/me")).toBe("~/work");
+    expect(abbreviateHome("/Users/me", "/Users/me")).toBe("~");
+    expect(abbreviateHome("/etc/hosts", "/Users/me")).toBe("/etc/hosts");
+    expect(abbreviateHome("/Users/メモ", "")).toBe("/Users/メモ");
   });
 });

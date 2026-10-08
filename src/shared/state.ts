@@ -19,6 +19,12 @@ export type AppState = {
   theme: ThemeState;
   activePath: string | null;
   files: FileState[];
+  /**
+   * Paths removed from the sidebar, most-recently-closed first, unique, capped at
+   * MAX_RECENTLY_CLOSED. Re-opening a path removes it from here (File → Recently Closed). Owned by
+   * main; never patched by the renderer.
+   */
+  recentlyClosed: string[];
 };
 
 /** Keys the renderer may patch. `version` and `window` are owned by main. */
@@ -31,6 +37,8 @@ export type StatePatch = Partial<
 
 export const SIDEBAR_WIDTH_RANGE = { min: 120, max: 600 } as const;
 export const FONT_SIZE_RANGE = { min: 8, max: 48 } as const;
+/** How many closed files File → Recently Closed remembers. */
+export const MAX_RECENTLY_CLOSED = 50;
 /** The Settings slider's range, in 1 px steps; Cmd +/- zoom may go beyond it (the slider then pins to its end). */
 export const FONT_SLIDER_RANGE = { min: 10, max: 18 } as const;
 export const DEFAULT_FONT_SIZE = 14;
@@ -46,6 +54,7 @@ export function defaultState(): AppState {
     theme: { mode: "auto", light: "macos-light", dark: "macos-dark", fixed: "macos-light" },
     activePath: null,
     files: [],
+    recentlyClosed: [],
   };
 }
 
@@ -117,6 +126,21 @@ export function parseActivePath(raw: unknown, files: FileState[]): string | null
   return isNonEmptyString(raw) && files.some((f) => f.path === raw) ? raw : null;
 }
 
+/** De-duplicates (first wins, i.e. most recent), drops non-strings, caps at MAX_RECENTLY_CLOSED. */
+export function parseRecentlyClosed(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of raw) {
+    if (isNonEmptyString(item) && !seen.has(item)) {
+      seen.add(item);
+      out.push(item);
+      if (out.length >= MAX_RECENTLY_CLOSED) break;
+    }
+  }
+  return out;
+}
+
 /** Full state from untrusted JSON. Unknown keys dropped, bad values replaced by defaults. */
 export function parseState(raw: unknown): AppState {
   const d = defaultState();
@@ -137,6 +161,7 @@ export function parseState(raw: unknown): AppState {
     theme: parseTheme(raw["theme"], d.theme),
     activePath: parseActivePath(raw["activePath"], files),
     files,
+    recentlyClosed: parseRecentlyClosed(raw["recentlyClosed"]),
   };
 }
 

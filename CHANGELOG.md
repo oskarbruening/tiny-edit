@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 — 2026-10-08
+
+- 2026-10-08 — File menu: a "Recently Closed" submenu lists the last 50 files removed from the sidebar, most recent first. Pick one to reopen it (it then leaves the list). Same-named files from different folders show their folder so they're easy to tell apart. The list is remembered across restarts.
+
+- 2026-10-08 — Editor: JSON, HTML, XML, YAML and TOML files are now highlighted with their own syntax (not as Markdown); SVG counts as XML.
+
+- 2026-10-08 — Edit → Pretty Format (⇧⌥F) reformats the current Markdown, JSON, HTML, XML or YAML file with two-space indentation using standard formatting, and writes the change to the file. Undo (⌘Z) reverts it. If the file can't be parsed, a dialog says it has problems formatting and nothing is changed. (TOML is highlighted but not reformatted.)
+
 ## 0.2.1 — 2026-10-08
 
 - 2026-10-08 — Fix: files that are not valid UTF-8 (Latin-1, UTF-16) are no longer rewritten with replacement characters on the first autosave; they open read-only with a notice. Classic-Mac (CR) line endings are kept, and a stray CR inside a file is shown and preserved instead of being turned into a line break.

@@ -3,8 +3,10 @@ import {
   DEFAULT_FONT_SIZE,
   defaultState,
   FONT_SLIDER_RANGE,
+  MAX_RECENTLY_CLOSED,
   parseFiles,
   parsePatch,
+  parseRecentlyClosed,
   parseState,
   parseTheme,
   parseWindowBounds,
@@ -23,6 +25,16 @@ describe("defaultState", () => {
     expect(d.theme.mode).toBe("auto");
     expect(d.activePath).toBeNull();
     expect(d.files).toEqual([]);
+    expect(d.recentlyClosed).toEqual([]);
+  });
+});
+
+describe("parseRecentlyClosed", () => {
+  it("keeps order, de-duplicates (first wins), drops non-strings, and caps the length", () => {
+    expect(parseRecentlyClosed(["/a", "/b", "/a", 7, "", "/c"])).toEqual(["/a", "/b", "/c"]);
+    expect(parseRecentlyClosed("nope")).toEqual([]);
+    const many = Array.from({ length: MAX_RECENTLY_CLOSED + 5 }, (_, i) => `/f${i}`);
+    expect(parseRecentlyClosed(many)).toHaveLength(MAX_RECENTLY_CLOSED);
   });
 });
 
@@ -43,6 +55,7 @@ describe("parseState", () => {
       theme: { mode: "fixed", light: "a", dark: "b", fixed: "c" },
       files: [{ path: "/a.md", anchor: 3, head: 7, scrollTop: 100 }],
       activePath: "/a.md",
+      recentlyClosed: ["/old1.md", "/old2.md"],
       junk: 1,
     };
     const parsed = parseState(full);

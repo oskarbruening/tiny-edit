@@ -13,7 +13,30 @@ export type MenuDeps = {
   themes: readonly Theme[];
   themeState: ThemeState;
   openThemesFolder: () => void;
+  /** Edit → Pretty Format is enabled only when the active file is Markdown/JSON/HTML/XML. */
+  canFormat: boolean;
+  /** File → Recently Closed entries (most recent first) with display labels. */
+  recentItems: readonly { path: string; label: string }[];
+  /** Re-open a recently-closed file. */
+  openRecent: (path: string) => void;
 };
+
+/** File → Recently Closed: one item per remembered path, or a disabled placeholder when empty. */
+function recentlyClosedSubmenu(
+  items: readonly { path: string; label: string }[],
+  openRecent: (path: string) => void,
+): MenuItemConstructorOptions {
+  if (items.length === 0) return { id: "recently-closed", label: "Recently Closed", enabled: false };
+  return {
+    id: "recently-closed",
+    label: "Recently Closed",
+    submenu: items.map((item, i) => ({
+      id: `recent-${i}`,
+      label: item.label,
+      click: () => openRecent(item.path),
+    })),
+  };
+}
 
 /** View → Theme: Automatic or one fixed theme; the Automatic pair is chosen in two submenus. */
 export function themeSubmenu(
@@ -110,6 +133,7 @@ export function menuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] {
       submenu: [
         { id: "new-file", label: "New File", accelerator: "CmdOrCtrl+N", click: relay({ type: "newFile" }) },
         { id: "open-file", label: "Open…", accelerator: "CmdOrCtrl+O", click: () => openDialog() },
+        recentlyClosedSubmenu(deps.recentItems, deps.openRecent),
         { type: "separator" },
         {
           id: "close-file",
@@ -129,6 +153,14 @@ export function menuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] {
         { role: "copy" },
         { role: "paste" },
         { role: "selectAll" },
+        { type: "separator" },
+        {
+          id: "pretty-format",
+          label: "Pretty Format",
+          accelerator: "Shift+Alt+F",
+          enabled: deps.canFormat,
+          click: relay({ type: "prettyFormat" }),
+        },
         { type: "separator" },
         { id: "find", label: "Find", accelerator: "CmdOrCtrl+F", click: relay({ type: "find" }) },
         {

@@ -16,6 +16,9 @@ const base = () => ({
   themes: BUILTIN_THEMES,
   themeState,
   openThemesFolder: vi.fn(),
+  canFormat: true,
+  recentItems: [] as { path: string; label: string }[],
+  openRecent: vi.fn(),
 });
 
 describe("menuTemplate", () => {
@@ -121,6 +124,39 @@ describe("menuTemplate", () => {
     expect(open.accelerator).toBe("CmdOrCtrl+O");
     click(open);
     expect(openDialog).toHaveBeenCalledTimes(1);
+  });
+
+  it("File → Recently Closed is a disabled placeholder when empty", () => {
+    const item = byId(menuTemplate(base()), "recently-closed");
+    expect(item.label).toBe("Recently Closed");
+    expect(item.enabled).toBe(false);
+    expect(item.submenu).toBeUndefined();
+  });
+
+  it("File → Recently Closed lists each entry and opens it on click", () => {
+    const deps = {
+      ...base(),
+      recentItems: [
+        { path: "/a/todo.md", label: "todo.md — ~/a" },
+        { path: "/b/todo.md", label: "todo.md — ~/b" },
+      ],
+    };
+    const item = byId(menuTemplate(deps), "recently-closed");
+    const sub = item.submenu as MenuItemConstructorOptions[];
+    expect(sub.map((i) => i.label)).toEqual(["todo.md — ~/a", "todo.md — ~/b"]);
+    click(sub[1]!);
+    expect(deps.openRecent).toHaveBeenCalledWith("/b/todo.md");
+  });
+
+  it("Edit → Pretty Format relays prettyFormat and is enabled only when canFormat", () => {
+    const deps = base();
+    const item = byId(menuTemplate(deps), "pretty-format");
+    expect(item.label).toBe("Pretty Format");
+    expect(item.accelerator).toBe("Shift+Alt+F");
+    expect(item.enabled).toBe(true);
+    click(item);
+    expect(deps.send).toHaveBeenCalledWith({ type: "prettyFormat" });
+    expect(byId(menuTemplate({ ...base(), canFormat: false }), "pretty-format").enabled).toBe(false);
   });
 });
 

@@ -120,6 +120,32 @@ describe("Editor", () => {
     expect(editor.text("/unknown.md")).toBeNull();
   });
 
+  it("formatDocument replaces the active file as one undoable edit that triggers autosave", () => {
+    const { editor, hooks } = make();
+    editors.push(editor);
+    editor.open("/a.json", '{"a":1}');
+    hooks.onDocChange.mockClear();
+    expect(editor.formatDocument("/a.json", '{ "a": 1 }\n')).toBe(true);
+    expect(editor.text("/a.json")).toBe('{ "a": 1 }\n');
+    expect(hooks.onDocChange).toHaveBeenCalledWith("/a.json"); // a real user edit → autosave
+    undo(editor.view);
+    expect(editor.text("/a.json")).toBe('{"a":1}'); // Cmd+Z reverts the format
+
+    expect(editor.formatDocument("/a.json", editor.text("/a.json")!)).toBe(false); // already formatted → no-op
+    expect(editor.formatDocument("/other.json", "x")).toBe(false); // not the active file → ignored
+  });
+
+  it("formatDocument clears a section scope so the whole file is reformatted", () => {
+    const { editor } = make();
+    editors.push(editor);
+    editor.open("/a.json", "line0\nline1\nline2");
+    editor.applyScope("/a.json", { from: 6, to: 11 });
+    expect(editor.scopeOf("/a.json")).not.toBeNull();
+    expect(editor.formatDocument("/a.json", "WHOLE")).toBe(true);
+    expect(editor.scopeOf("/a.json")).toBeNull();
+    expect(editor.text("/a.json")).toBe("WHOLE");
+  });
+
   it("minimalChange trims the common prefix and suffix", () => {
     expect(minimalChange("abc", "abc")).toBeNull();
     expect(minimalChange("hello world", "hello there world")).toEqual({ from: 6, to: 6, insert: "there " });
