@@ -1,11 +1,17 @@
 import { DEFAULT_FONT_SIZE, FONT_SIZE_STEPS, nearestFontStep, type ThemeState } from "../../shared/state";
 import type { Appearance, Theme } from "../../shared/themes";
 
-export type SettingsSnapshot = { theme: ThemeState; fontSize: number; themes: readonly Theme[] };
+export type SettingsSnapshot = {
+  theme: ThemeState;
+  fontSize: number;
+  highlight: boolean;
+  themes: readonly Theme[];
+};
 
 export type SettingsHooks = {
   onTheme: (theme: ThemeState) => void;
   onFontSize: (px: number) => void;
+  onHighlight: (on: boolean) => void;
   /** After the panel closes (the app gives focus back to the editor). */
   onClose?: () => void;
 };
@@ -13,8 +19,8 @@ export type SettingsHooks = {
 export const SETTINGS_TITLE = "Settings";
 
 /**
- * The in-window Settings panel (App menu → Settings…, Cmd+,): theme mode and pick, and the
- * five-step font-size slider. Pure DOM; the app feeds it state via `update()` and persists
+ * The in-window Settings panel (App menu → Settings…, Cmd+,): theme mode and pick, the
+ * five-step font-size slider and the syntax-highlighting switch. Pure DOM; the app feeds it state via `update()` and persists
  * what the hooks report. Esc, the backdrop and Done close it.
  */
 export class Settings {
@@ -26,6 +32,7 @@ export class Settings {
   private readonly darkSelect: HTMLSelectElement;
   private readonly fontSlider: HTMLInputElement;
   private readonly fontValue: HTMLElement;
+  private readonly highlightBox: HTMLInputElement;
   private snapshot: SettingsSnapshot | null = null;
 
   constructor(
@@ -98,7 +105,14 @@ export class Settings {
     this.fontValue = el("output", "settings__font-value");
     const fontRow = row(labelText("Font size", this.fontSlider), this.fontSlider);
     fontRow.append(this.fontValue);
-    const editorSection = section("Editor", [fontRow]);
+    this.highlightBox = el("input", "settings__highlight");
+    this.highlightBox.type = "checkbox";
+    this.highlightBox.id = "settings-highlight";
+    this.highlightBox.addEventListener("change", () => this.hooks.onHighlight(this.highlightBox.checked));
+    const editorSection = section("Editor", [
+      fontRow,
+      row(labelFor(this.highlightBox, "Syntax highlighting"), null),
+    ]);
 
     // ── Footer ──
     const done = el("button", "settings__done");
@@ -115,7 +129,7 @@ export class Settings {
   /** Re-renders every control from the given state. Safe to call while open. */
   update(snapshot: SettingsSnapshot): void {
     this.snapshot = snapshot;
-    const { theme, themes, fontSize } = snapshot;
+    const { theme, themes, fontSize, highlight } = snapshot;
     const auto = theme.mode === "auto";
     this.modeAuto.checked = auto;
     this.modeFixed.checked = !auto;
@@ -128,6 +142,7 @@ export class Settings {
     const step = nearestFontStep(fontSize);
     this.fontSlider.value = String(step + 1);
     this.fontValue.textContent = `${FONT_SIZE_STEPS[step]} px`;
+    this.highlightBox.checked = highlight;
   }
 
   open(): void {
@@ -185,6 +200,7 @@ function radio(name: string, value: string): HTMLInputElement {
   r.id = `${name}-${value}`;
   return r;
 }
+/** A label wrapping a radio or checkbox, with the text after the control. */
 function labelFor(input: HTMLInputElement, text: string): HTMLLabelElement {
   const l = el("label", "settings__label settings__label--radio");
   l.htmlFor = input.id;

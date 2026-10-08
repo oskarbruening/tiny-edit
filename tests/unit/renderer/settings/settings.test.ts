@@ -11,6 +11,7 @@ import { BUILTIN_THEMES, MEADOW } from "../../../../src/shared/themes";
 const snapshot = (over: Partial<SettingsSnapshot> = {}): SettingsSnapshot => ({
   theme: defaultState().theme,
   fontSize: 14,
+  highlight: true,
   themes: BUILTIN_THEMES,
   ...over,
 });
@@ -18,7 +19,7 @@ const snapshot = (over: Partial<SettingsSnapshot> = {}): SettingsSnapshot => ({
 function make() {
   const host = document.createElement("div");
   document.body.append(host);
-  const hooks = { onTheme: vi.fn(), onFontSize: vi.fn(), onClose: vi.fn() };
+  const hooks = { onTheme: vi.fn(), onFontSize: vi.fn(), onHighlight: vi.fn(), onClose: vi.fn() };
   const settings = new Settings(host, hooks);
   const q = <T extends Element>(sel: string) => host.querySelector<T>(sel)!;
   return { host, hooks, settings, q };
@@ -27,7 +28,7 @@ function make() {
 beforeEach(() => document.body.replaceChildren());
 
 describe("Settings", () => {
-  it("builds a hidden dialog with title, theme controls, slider and Done", () => {
+  it("builds a hidden dialog with title, theme controls, slider, highlight switch and Done", () => {
     const { host, q } = make();
     expect(host.hidden).toBe(true);
     expect(host.classList.contains("settings")).toBe(true);
@@ -36,6 +37,8 @@ describe("Settings", () => {
     expect(q<HTMLInputElement>(".settings__font").type).toBe("range");
     expect(q<HTMLInputElement>(".settings__font").min).toBe("1");
     expect(q<HTMLInputElement>(".settings__font").max).toBe("5");
+    expect(q<HTMLInputElement>("#settings-highlight").type).toBe("checkbox");
+    expect(q<HTMLLabelElement>("label[for='settings-highlight']").textContent).toBe("Syntax highlighting");
     expect([...host.querySelectorAll(".settings__heading")].map((h) => h.textContent)).toEqual([
       "Theme",
       "Editor",
@@ -51,7 +54,11 @@ describe("Settings", () => {
     const light = q<HTMLSelectElement>(".settings__light");
     const dark = q<HTMLSelectElement>(".settings__dark");
     const fixed = q<HTMLSelectElement>(".settings__fixed");
-    expect([...light.options].map((o) => o.textContent)).toEqual(["Meadow", "Catppuccin Latte"]);
+    expect([...light.options].map((o) => o.textContent)).toEqual([
+      "Meadow",
+      "Catppuccin Latte",
+      "macOS Light",
+    ]);
     expect([...dark.options].map((o) => o.value)).toEqual([
       "tokyo-night",
       "catppuccin-frappe",
@@ -61,18 +68,21 @@ describe("Settings", () => {
     ]);
     expect(light.value).toBe("meadow");
     expect(dark.value).toBe("catppuccin-mocha");
-    expect(fixed.options).toHaveLength(7);
+    expect(fixed.options).toHaveLength(8);
     expect(fixed.disabled).toBe(true);
     expect(light.disabled).toBe(false);
     expect(q<HTMLInputElement>(".settings__font").value).toBe("3");
     expect(q(".settings__font-value").textContent).toBe("14 px");
+    expect(q<HTMLInputElement>("#settings-highlight").checked).toBe(true);
 
     settings.update(
       snapshot({
         theme: { mode: "fixed", light: "meadow", dark: "tokyo-night", fixed: "catppuccin-latte" },
         fontSize: 11,
+        highlight: false,
       }),
     );
+    expect(q<HTMLInputElement>("#settings-highlight").checked).toBe(false);
     expect(q<HTMLInputElement>("#settings-mode-fixed").checked).toBe(true);
     expect(fixed.disabled).toBe(false);
     expect(light.disabled).toBe(true);
@@ -142,6 +152,19 @@ describe("Settings", () => {
     slider.value = "abc"; // non-numeric: the DOM resets a range to its midpoint
     slider.dispatchEvent(new Event("input"));
     expect(hooks.onFontSize).toHaveBeenLastCalledWith(14);
+  });
+
+  it("reports the highlight switch as a boolean", () => {
+    const { settings, hooks, q } = make();
+    settings.update(snapshot());
+    const box = q<HTMLInputElement>("#settings-highlight");
+    box.checked = false;
+    box.dispatchEvent(new Event("change"));
+    expect(hooks.onHighlight).toHaveBeenLastCalledWith(false);
+    box.checked = true;
+    box.dispatchEvent(new Event("change"));
+    expect(hooks.onHighlight).toHaveBeenLastCalledWith(true);
+    expect(hooks.onHighlight).toHaveBeenCalledTimes(2);
   });
 
   it("maps slider steps to px and shows the value live", () => {

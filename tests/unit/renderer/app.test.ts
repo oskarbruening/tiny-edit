@@ -128,14 +128,18 @@ describe("mount", () => {
 });
 
 describe("applyViewState", () => {
-  it("sets sidebar width/visibility and font size variables", () => {
+  it("sets sidebar width/visibility and font size variables and the highlight-off class", () => {
     const html = document.createElement("html");
-    applyViewState(html, { sidebarWidth: 240, sidebarVisible: true, fontSize: 16 });
+    applyViewState(html, { sidebarWidth: 240, sidebarVisible: true, fontSize: 16, highlight: true });
     expect(html.style.getPropertyValue("--te-sidebar-width")).toBe("240px");
     expect(html.style.getPropertyValue("--te-font-size")).toBe("16px");
-    applyViewState(html, { sidebarWidth: 240, sidebarVisible: false, fontSize: 14 });
+    expect(html.classList.contains("highlight-off")).toBe(false);
+    applyViewState(html, { sidebarWidth: 240, sidebarVisible: false, fontSize: 14, highlight: false });
     expect(html.style.getPropertyValue("--te-sidebar-width")).toBe("0px");
     expect(html.classList.contains("sidebar-hidden")).toBe(true);
+    expect(html.classList.contains("highlight-off")).toBe(true);
+    applyViewState(html, { sidebarWidth: 240, sidebarVisible: true, fontSize: 14, highlight: true });
+    expect(html.classList.contains("highlight-off")).toBe(false);
   });
 });
 
@@ -625,7 +629,7 @@ describe("boot", () => {
       expect(document.documentElement.style.getPropertyValue("--te-font-size")).toBe("8px");
     });
 
-    it("openSettings toggles the panel; its controls patch theme and font size; Esc gives focus back", async () => {
+    it("openSettings toggles the panel; its controls patch theme, font size and highlighting; Esc gives focus back", async () => {
       const f = fakeApi({ ...twoFiles(), activePath: null }, { "/a.md": "aaa", "/b.md": "bbb" });
       const app = await boot(document.createElement("div"), f.api);
       apps.push(app);
@@ -641,6 +645,19 @@ describe("boot", () => {
       expect(app.store.get().fontSize).toBe(18);
       expect(document.documentElement.style.getPropertyValue("--te-font-size")).toBe("18px");
       expect(f.api.patchState).toHaveBeenLastCalledWith({ fontSize: 18 });
+
+      // Highlighting off: persisted and flagged on <html> so the CSS can neutralise the syntax classes.
+      const box = app.shell.settingsHost.querySelector<HTMLInputElement>("#settings-highlight")!;
+      expect(box.checked).toBe(true);
+      box.checked = false;
+      box.dispatchEvent(new Event("change", { bubbles: true }));
+      expect(app.store.get().highlight).toBe(false);
+      expect(document.documentElement.classList.contains("highlight-off")).toBe(true);
+      expect(f.api.patchState).toHaveBeenLastCalledWith({ highlight: false });
+      box.checked = true;
+      box.dispatchEvent(new Event("change", { bubbles: true }));
+      expect(app.store.get().highlight).toBe(true);
+      expect(document.documentElement.classList.contains("highlight-off")).toBe(false);
 
       // Zoom from the menu lands between steps; the slider snaps to the nearest one.
       app.handleMenuAction({ type: "zoomOut" });

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- 2026-10-08 — Themes: added "macOS Light", a built-in light theme matching Apple's system light appearance (white text background, systemBlue accent, SF Mono) with Xcode Default (Light) syntax accents; the counterpart of macOS Dark.
+
+- 2026-10-08 — Settings: a "Syntax highlighting" checkbox under Editor turns all highlighting off, so every character renders in the plain text colour (no bold or italic either). Markdown markers stay visible, fenced code blocks keep their panel, and the copy and open-link buttons still appear on hover.
+
 - 2026-10-07 — Editor: fenced code blocks (```) now sit in a subtle inset panel — a slightly recessed background with a bordered, rounded box that runs nearly edge to edge (small side margin). Highlighting and the visible fence markers are unchanged.
 
 - 2026-10-07 — Editor: Markdown links (`[text](url)`) and autolinks (`<url>`) pointing at an http(s)/mailto address show an open-link button on hover and open in the default browser on ⌘-click anywhere on the link. Relative and fragment links are left inert; bare URLs in plain text are not detected.

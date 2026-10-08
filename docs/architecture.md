@@ -78,6 +78,7 @@ Narrowing is `editor/scope.ts`: a `StateField<{from,to}|null>` set by a `setScop
   "sidebarWidth": 200,
   "sidebarVisible": true,
   "fontSize": 14,
+  "highlight": true,
   "theme": { "mode": "auto", "light": "meadow", "dark": "catppuccin-mocha", "fixed": "tokyo-night" },
   "activePath": "/Users/muse/notes/todo.md",
   "files": [{ "path": "/Users/muse/notes/todo.md", "anchor": 1234, "head": 1234, "scrollTop": 480 }]
@@ -131,7 +132,7 @@ Every R→M handler validates types and paths; path-bearing calls other than `fi
 
 ## Themes (`src/shared/themes.ts`)
 
-- Seven built-ins: Meadow (light), Tokyo Night, Catppuccin Latte (light), Frappé, Macchiato, Mocha (dark), macOS Dark (dark). UI roles are the hub's; syntax palettes are the canonical Tokyo Night / Catppuccin colours, and Apple's system / Xcode Default (Dark) accents for macOS Dark. `resolveTheme(setting, themes, appearance)` never fails (falls back to the defaults, then Meadow).
+- Eight built-ins: Meadow (light), Tokyo Night, Catppuccin Latte (light), Frappé, Macchiato, Mocha (dark), macOS Light (light), macOS Dark (dark). UI roles are the hub's; syntax palettes are the canonical Tokyo Night / Catppuccin colours, and Apple's system / Xcode Default (Light / Dark) accents for the two macOS themes. `resolveTheme(setting, themes, appearance)` never fails (falls back to the defaults, then Meadow).
 - Main: `UserThemes` loads `userData/themes/*.json` (defensive `parseUserTheme`: id from the file name, appearance from surface luminance, tokens filled from the matching built-in), watches the folder (200 ms debounce) and pushes `themes:changed`; `nativeTheme.updated` pushes `appearance:changed`; both plus theme-state changes rebuild the View → Theme menu (Automatic / fixed radios, Light/Dark-for-Automatic submenus, Open Themes Folder) and re-set the window's `backgroundColor` to the theme surface so nothing flashes.
 - Renderer: `applyTheme` writes every `--te-*` variable (`themeCssVars`), `data-appearance`, `data-theme` and `color-scheme` on `<html>`; re-painted on theme-state, theme-list and appearance changes. A unit test checks that every `var(--te-*)` used in `styles.css` is produced by `themeCssVars` (layout vars excepted) and that the CSS defaults equal Meadow.
 
@@ -193,7 +194,7 @@ type ThemeTokens = {
 };
 ```
 
-- Built-ins: Meadow (light), Tokyo Night (dark), Catppuccin Latte (light), Frappé, Macchiato, Mocha (dark), macOS Dark (dark); the first six ported from the hub with syntax palettes added, macOS Dark from Apple's system dark colours + Xcode Default (Dark) syntax accents.
+- Built-ins: Meadow (light), Tokyo Night (dark), Catppuccin Latte (light), Frappé, Macchiato, Mocha (dark), macOS Light (light), macOS Dark (dark); the first six ported from the hub with syntax palettes added, macOS Light / Dark from Apple's system light / dark colours + Xcode Default (Light / Dark) syntax accents.
 - `parseThemeTokens(raw)` falls back field by field to Meadow; colours must match `^#[0-9a-fA-F]{6}$`, radius clamps to 0–24.
 - `themeCssVars(tokens)` → `--te-<kebab-role>` and `--te-syntax-<kebab-role>`, set on `<html>`; the main window's `backgroundColor` is updated to the new surface on switch.
 - Mode `auto` picks `theme.light` / `theme.dark` from `nativeTheme.shouldUseDarkColors`; mode `fixed` uses `theme.fixed`.
@@ -204,6 +205,7 @@ type ThemeTokens = {
 - App menu → Settings… (Cmd+,) relays `menu:action { type: 'openSettings' }`; the renderer toggles an in-window overlay panel (`role="dialog"`, Esc / backdrop / Done close it, focus returns to the editor). No second window, no extra IPC: the panel reads the store and the theme list and persists through the existing `state:patch`.
 - **Theme:** Automatic (with the Light / Dark pair) or Fixed (one theme); the same `ThemeState` the View → Theme menu edits, so both stay in sync (menu rebuild on state change, panel `update()` on store/theme-list change).
 - **Font size:** a five-step slider over `FONT_SIZE_STEPS` (10 / 12 / 14 / 16 / 18 px; the 14 px default is the middle step). It writes `fontSize` exactly like Cmd+/− zoom; a zoomed size between steps shows the nearest step. Everything not part of a theme that becomes user-configurable later goes here.
+- **Syntax highlighting:** a checkbox bound to `highlight` (default on). Off puts `highlight-off` on `<html>` (`applyViewState`) and a rule in `styles.css` makes every `te-*` syntax class inherit colour, weight, slant and decoration, so all text is the body colour. Purely CSS: the Markdown parser, the fenced-code grammars, the code-block panel, bracket-match and search backgrounds, copy and open-link buttons all keep working.
 - Styles live in `settings/settings.css` (linked from `index.html`), tokens only; the CSS-variable coverage test scans it too.
 
 ## Window

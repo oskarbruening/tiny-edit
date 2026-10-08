@@ -70,6 +70,7 @@
 }
 
 .settings__radio,
+.settings__highlight,
 .settings__select,
 .settings__font {
   accent-color: var(--te-primary);
@@ -125,6 +126,7 @@
 
 .settings__done:focus-visible,
 .settings__select:focus-visible,
+.settings__highlight:focus-visible,
 .settings__font:focus-visible {
   outline: 2px solid var(--te-primary-container);
   outline-offset: 1px;
