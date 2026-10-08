@@ -16,7 +16,7 @@ test("pages: welcome page with no file, Help → What's New, file reopens untouc
 
     // Fresh install: the welcome page, highlighted and read-only.
     await expect(content).toContainText("Welcome to Tiny Edit");
-    await expect(content).toContainText("Your words are always saved");
+    await expect(content).toContainText("Key Features");
     await expect(page.locator(".te-heading").first()).toBeVisible();
     await expect(content).toHaveAttribute("aria-readonly", "true");
 
