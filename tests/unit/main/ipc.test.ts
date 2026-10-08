@@ -195,6 +195,12 @@ describe("registerIpc", () => {
     expect(() => call(CHANNELS.filesCopyPath, "/etc/passwd")).toThrow("not in the file list");
   });
 
+  it("clipboard:write copies any string and rejects non-strings", () => {
+    call(CHANNELS.clipboardWrite, "const x = 1");
+    expect(clipboard.writeText).toHaveBeenCalledWith("const x = 1");
+    expect(() => call(CHANNELS.clipboardWrite, 42)).toThrow("text must be a string");
+  });
+
   it("file:read and successful file:write report the stamp the renderer now holds", async () => {
     const onFileStamp = vi.fn();
     const h = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();

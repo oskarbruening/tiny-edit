@@ -8,6 +8,7 @@ import { applyTheme } from "./theme/apply";
 import { installDivider } from "./divider";
 import { installDropzone } from "./dropzone";
 import { Autosave, type FileMeta } from "./autosave";
+import { copyButtons } from "./editor/copy";
 import { Editor } from "./editor/editor";
 import type { ScopeRange } from "./editor/scope";
 import { Notice } from "./notice";
@@ -145,6 +146,7 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
         scheduleToc(path);
       },
     },
+    extensions: [copyButtons((text) => void api.copyText(text))],
   });
 
   const autosave = new Autosave({

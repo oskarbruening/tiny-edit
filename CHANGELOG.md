@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 2026-10-07 — Editor: hovering inline code (`…`) or a fenced code block (```) shows a copy button that copies the content (inner text only, no backticks or fences) to the clipboard.
+
 - 2026-10-07 — Outline: a file with two or more `#` or `## ` headings shows a chevron in the sidebar; expand it for a flattened table of contents (H2s indented) and click a heading to focus the editor on just that section (an H1 includes its H2s). Editing the focused section still saves the whole file; click the file name to see all of it again.
 
 - 2026-10-07 — Themes: added "macOS Dark", a built-in dark theme matching Apple's system dark appearance (textBackground surface, systemBlue accent, SF Mono) with Xcode Default (Dark) syntax accents.

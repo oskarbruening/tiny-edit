@@ -16,6 +16,8 @@ export const CHANNELS = {
   filesAdd: "files:add",
   filesReveal: "files:reveal",
   filesCopyPath: "files:copyPath",
+  /** R→M: write arbitrary text to the system clipboard (editor copy buttons). */
+  clipboardWrite: "clipboard:write",
   /** M→R: files were added to the list (drop, Cmd+N, Finder open). */
   filesOpened: "files:opened",
   /** M→R: the window is closing; save everything, then answer with renderer:flushed. */
@@ -75,6 +77,8 @@ export type Api = {
   addFiles(paths: string[]): Promise<AddFilesResult>;
   revealFile(path: string): Promise<void>;
   copyPath(path: string): Promise<void>;
+  /** Writes arbitrary text to the clipboard (inline-code / code-block copy buttons). */
+  copyText(text: string): Promise<void>;
   /** Native context menu for a listed file; its choices come back as menu actions. */
   showFileMenu(path: string): Promise<void>;
   /** Removes a file from the list (disk untouched); resolves to the new state. */
@@ -133,6 +137,7 @@ export const API_KEYS = [
   "addFiles",
   "revealFile",
   "copyPath",
+  "copyText",
   "pathForFile",
   "onFilesOpened",
   "onFlushRequest",
