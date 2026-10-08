@@ -20,12 +20,8 @@ test("structured files get their own highlighting; Pretty Format rewrites JSON/Y
     const page = await app.firstWindow();
     await page.waitForSelector(".sidebar__empty");
     await page.evaluate((paths) => window.api.addFiles(paths), [data, conf, cargo, note]);
-    await expect(page.locator(".sidebar__item")).toHaveText([
-      "data.json",
-      "conf.yaml",
-      "cargo.toml",
-      "note.txt",
-    ]);
+    // .txt is a hidden extension, so note.txt shows as "note"; the data formats keep their names.
+    await expect(page.locator(".sidebar__item")).toHaveText(["data.json", "conf.yaml", "cargo.toml", "note"]);
     await expect(page.locator(".cm-content")).toContainText('"b"');
 
     // The JSON file is highlighted as JSON (a property class), not as Markdown.
@@ -64,7 +60,7 @@ test("structured files get their own highlighting; Pretty Format rewrites JSON/Y
     await expect.poll(() => menuEnabled("pretty-format")).toBe(false);
 
     // Pretty Format is disabled for a plain-text file.
-    await page.locator(".sidebar__item", { hasText: "note.txt" }).click();
+    await page.locator(".sidebar__item", { hasText: "note" }).click();
     await expect(page.locator(".cm-content")).toContainText("plain text");
     await expect.poll(() => menuEnabled("pretty-format")).toBe(false);
   } finally {
