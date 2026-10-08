@@ -1,6 +1,6 @@
 # What's New in Tiny Edit
 
-## Unreleased
+## 0.2.0 — 2026-10-08
 
 - **Your bytes are safe.** Files that aren't UTF-8 (old Latin-1 or UTF-16 text) open read-only instead of being rewritten with � characters. Classic Mac line endings and stray carriage returns are kept exactly.
 - **No silent data loss on quit.** If a "Changed on disk" bar or a failed save is still open, quitting asks before anything is discarded.

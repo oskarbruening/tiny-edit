@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-10-08
 
 - 2026-10-08 — Fix: files that are not valid UTF-8 (Latin-1, UTF-16) are no longer rewritten with replacement characters on the first autosave; they open read-only with a notice. Classic-Mac (CR) line endings are kept, and a stray CR inside a file is shown and preserved instead of being turned into a line break.
 
