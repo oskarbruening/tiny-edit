@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- 2026-10-08 — Fix: files that are not valid UTF-8 (Latin-1, UTF-16) are no longer rewritten with replacement characters on the first autosave; they open read-only with a notice. Classic-Mac (CR) line endings are kept, and a stray CR inside a file is shown and preserved instead of being turned into a line break.
+
+- 2026-10-08 — Fix: quitting with an unresolved "Changed on disk" bar or a failed save now asks "Quit Anyway / Cancel" instead of silently discarding the edits; a failed save stays visible when you return to the file.
+
+- 2026-10-08 — Fix: dropping a file onto the editor area opens it in the sidebar; its contents are no longer pasted into the current document as well.
+
+- 2026-10-08 — Files: many more formats open directly (JSON, YAML, TOML, INI, CSV, XML, HTML, CSS, common source code, and extensionless text). Files that can't be opened now show a dialog saying which file and why, instead of nothing happening.
+
+- 2026-10-08 — Sidebar: "Close File" and "Remove from List" are both "Remove from Sidebar" (⌘W); removing a file offers Undo for a few seconds. Returning to an open file restores its own scroll position.
+
+- 2026-10-08 — Editor: a file touched by a sync tool or git without changing its bytes no longer triggers a reload or a conflict bar; a real change on a clean file keeps the undo history, caret and section focus. Undocumented shortcuts from CodeMirror's default keymap (⌘/ comment, ⌥↑↓ move line, ⌘] indent, ⌘I, …) are gone; Backspace always deletes exactly one character.
+
+- 2026-10-08 — Outline: setext headings (text underlined with `===` or `---`) are listed too. Settings: Tab stays inside the dialog.
+
+- 2026-10-08 — Internal: atomic writes keep the file's permission bits and fsync; highlight decorations only scan the visible part of large files; a state write can no longer lose a race with the quit-time flush.
+
 - 2026-10-08 — Welcome page: with no file selected the editor shows a short read-only guide to autosave, highlighting and shortcuts. Help → What's New shows a read-only list of recent changes by version.
 
 - 2026-10-08 — Settings: the font-size slider moves in 1 px steps (10–18 px).

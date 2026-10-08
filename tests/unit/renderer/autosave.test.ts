@@ -17,7 +17,7 @@ function make(idleMs = 300) {
     ["/a.md", "A"],
     ["/b.md", "B"],
   ]);
-  const meta = new Map<string, FileMeta>([["/a.md", { eol: "\r\n", bom: true, stamp: stamp(1) }]]);
+  const meta = new Map<string, FileMeta>([["/a.md", { eol: "\r\n", bom: true, stamp: stamp(1), disk: "A" }]]);
   const writeFile = vi.fn(async (_req: WriteFileRequest) => ({ ok: true as const, stamp: stamp(2) }));
   const hooks = { onSaved: vi.fn(), onConflict: vi.fn(), onError: vi.fn() };
   const autosave = new Autosave({

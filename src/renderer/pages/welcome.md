@@ -6,7 +6,8 @@ A small, fast editor for plain-text and markdown files.
 
 - Drop files from anywhere into the sidebar as a shortcut
   - The sidebar is like a list of shortcuts which you can reorder
-  - Reordering or removing files from the sidebar won't change the file itself
+  - Reordering or removing files from the sidebar (⌘W, with Undo) won't change the file itself
+  - Markdown, plain text, JSON, YAML, CSV, HTML, source code and other UTF-8 text files open directly
 - Every change is autosaved so no save button
 - Pure text editing: no auto-correct, no smart quotes, no auto-closing brackets
 - Basic markdown highlighting (disable in settings)

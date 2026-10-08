@@ -129,6 +129,20 @@ describe("Watcher", () => {
     expect(t.onChanged).toHaveBeenCalledWith("/d/a.md", stamp(7));
   });
 
+  it("builds root-level paths without a double slash, so their stamps line up", async () => {
+    const stats = new Map([["/a.md", stamp(2)]]);
+    const t = make(stats);
+    t.watcher.setPaths(["/a.md"]);
+    t.watcher.recordStamp("/a.md", stamp(1));
+    await t.watcher.checkAll();
+    expect(t.onChanged).toHaveBeenCalledWith("/a.md", stamp(2));
+    stats.set("/a.md", stamp(3));
+    vi.useFakeTimers();
+    t.fire("/", "a.md");
+    await vi.advanceTimersByTimeAsync(60);
+    expect(t.onChanged).toHaveBeenLastCalledWith("/a.md", stamp(3));
+  });
+
   it("checkAll re-stats everything (focus) and setPaths drops stamps of removed files", async () => {
     const stats = new Map([
       ["/d/a.md", stamp(2)],

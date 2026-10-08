@@ -10,6 +10,7 @@ import {
   type ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
+import { wholeDoc, type VisibleRange } from "./codeblock";
 import { icon, svgEl as el } from "./svg";
 
 /** Writes the copied text somewhere (the clipboard, via IPC, in the app; a spy in tests). */
@@ -110,46 +111,53 @@ export function fencedBlock(
   return { lineFrom: line.from, lineTo: line.to, bodyFrom, bodyTo };
 }
 
-/** Builds the copy-button decorations plus the outer char ranges of every fenced block (for hover). */
+/**
+ * Builds the copy-button decorations plus the outer char ranges of every fenced block (for
+ * hover), for the code that touches `ranges` (the viewport by default in the plugin).
+ */
 export function buildCopy(
   state: EditorState,
   copy: CopyFn,
+  visible: readonly VisibleRange[] = wholeDoc(state),
 ): { decorations: DecorationSet; blocks: { from: number; to: number }[] } {
   const ranges: Range<Decoration>[] = [];
   const blocks: { from: number; to: number }[] = [];
-  syntaxTree(state).iterate({
-    enter(node) {
-      if (node.name === "InlineCode") {
-        const inner = inlineCodeInner(node.node);
-        if (inner) {
-          const text = state.doc.sliceString(inner.from, inner.to);
-          ranges.push(
-            Decoration.widget({
-              widget: new CopyWidget(text, "inline", node.from, copy),
-              side: 1,
-            }).range(node.to),
-          );
-        }
-        return false;
+  const seen = new Set<number>();
+  const enter = (node: { name: string; from: number; to: number; node: SyntaxNode }): boolean | undefined => {
+    if (node.name !== "InlineCode" && node.name !== "FencedCode") return undefined;
+    if (seen.has(node.from)) return false;
+    seen.add(node.from);
+    if (node.name === "InlineCode") {
+      const inner = inlineCodeInner(node.node);
+      if (inner) {
+        const text = state.doc.sliceString(inner.from, inner.to);
+        ranges.push(
+          Decoration.widget({
+            widget: new CopyWidget(text, "inline", node.from, copy),
+            side: 1,
+          }).range(node.to),
+        );
       }
-      if (node.name === "FencedCode") {
-        const fb = fencedBlock(state, node.node);
-        if (fb) {
-          const text = state.doc.sliceString(fb.bodyFrom, fb.bodyTo);
-          ranges.push(Decoration.line({ class: "te-copyblock" }).range(fb.lineFrom));
-          ranges.push(
-            Decoration.widget({
-              widget: new CopyWidget(text, "block", node.from, copy),
-              side: 1,
-            }).range(fb.lineTo),
-          );
-          blocks.push({ from: node.from, to: node.to });
-        }
-        return false;
+      return false;
+    }
+    if (node.name === "FencedCode") {
+      const fb = fencedBlock(state, node.node);
+      if (fb) {
+        const text = state.doc.sliceString(fb.bodyFrom, fb.bodyTo);
+        ranges.push(Decoration.line({ class: "te-copyblock" }).range(fb.lineFrom));
+        ranges.push(
+          Decoration.widget({
+            widget: new CopyWidget(text, "block", node.from, copy),
+            side: 1,
+          }).range(fb.lineTo),
+        );
+        blocks.push({ from: node.from, to: node.to });
       }
-      return undefined;
-    },
-  });
+      return false;
+    }
+    return undefined;
+  };
+  for (const { from, to } of visible) syntaxTree(state).iterate({ from, to, enter });
   return { decorations: Decoration.set(ranges, true), blocks };
 }
 
@@ -163,14 +171,14 @@ class CopyPlugin implements PluginValue {
     view: EditorView,
     private readonly copy: CopyFn,
   ) {
-    const built = buildCopy(view.state, copy);
+    const built = buildCopy(view.state, copy, view.visibleRanges);
     this.decorations = built.decorations;
     this.blocks = built.blocks;
   }
 
   update(u: ViewUpdate): void {
     if (u.docChanged || u.viewportChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) {
-      const built = buildCopy(u.view.state, this.copy);
+      const built = buildCopy(u.view.state, this.copy, u.view.visibleRanges);
       this.decorations = built.decorations;
       this.blocks = built.blocks;
     }

@@ -1,8 +1,12 @@
 import type { Api, FileStamp, WriteFileRequest } from "../shared/ipc";
 import type { Eol } from "../shared/text";
 
-/** What we know about a file on disk; `stamp` null means "not there when we last looked". */
-export type FileMeta = { eol: Eol; bom: boolean; stamp: FileStamp | null };
+/**
+ * What we know about a file on disk; `stamp` null means "not there when we last looked".
+ * `disk` is the text the file held when we last read or wrote it (null when unknown), so a
+ * watcher event whose content is unchanged (a touched mtime) can be told from a real edit.
+ */
+export type FileMeta = { eol: Eol; bom: boolean; stamp: FileStamp | null; disk: string | null };
 
 export type AutosaveDeps = {
   api: Pick<Api, "writeFile">;
@@ -45,6 +49,11 @@ export class Autosave {
     return this.parked.has(path);
   }
 
+  /** Files whose edits are not on disk right now (dirty, parked or mid-write), for the quit guard. */
+  pendingPaths(): string[] {
+    return [...new Set([...this.dirty, ...this.inFlight.keys()])];
+  }
+
   /** The disk changed under unsaved edits (watcher): hold writes until the user decides. */
   park(path: string): void {
     this.parked.add(path);
@@ -83,14 +92,14 @@ export class Autosave {
       this.dirty.delete(path);
       return Promise.resolve();
     }
-    const meta = this.deps.meta.get(path) ?? { eol: "\n", bom: false, stamp: null };
+    const meta = this.deps.meta.get(path) ?? { eol: "\n", bom: false, stamp: null, disk: null };
     this.dirty.delete(path);
     const req: WriteFileRequest = { path, text, eol: meta.eol, bom: meta.bom, expected: meta.stamp, force };
     const job = this.deps.api
       .writeFile(req)
       .then((result) => {
         if (result.ok) {
-          this.deps.meta.set(path, { ...meta, stamp: result.stamp });
+          this.deps.meta.set(path, { ...meta, stamp: result.stamp, disk: text });
           this.deps.onSaved(path, result.stamp);
         } else {
           this.parked.add(path);

@@ -60,6 +60,51 @@ describe("parseToc", () => {
     ]);
   });
 
+  it("recognises setext headings (=== is H1, --- is H2) with the paragraph line as the text", () => {
+    const text = ["Title", "=====", "intro", "Section", "---", "body", "## Atx"].join("\n");
+    const toc = parseToc(text);
+    expect(toc.map((h) => [h.level, h.text])).toEqual([
+      [1, "Title"],
+      [2, "Section"],
+      [2, "Atx"],
+    ]);
+    expect(section(text, toc[0]!)).toBe(text + ""); // H1 runs to the end: no later H1
+    expect(text.slice(toc[1]!.from, toc[1]!.from + 7)).toBe("Section");
+    expect(section(text, toc[1]!)).toBe("Section\n---\nbody\n");
+  });
+
+  it("does not mistake a thematic break, a list item or a blank line for a setext heading", () => {
+    const text = [
+      "",
+      "---",
+      "para",
+      "",
+      "===",
+      "- item",
+      "---",
+      "> quote",
+      "===",
+      "# H",
+      "---",
+      "```",
+      "x",
+      "```",
+      "---",
+      "   Indented ok",
+      "  ===  ",
+    ].join("\n");
+    const toc = parseToc(text);
+    expect(toc.map((h) => [h.level, h.text])).toEqual([
+      [1, "H"],
+      [1, "Indented ok"],
+    ]);
+  });
+
+  it("ignores setext underlines inside fenced code", () => {
+    const text = ["```", "Not a title", "===", "```"].join("\n");
+    expect(parseToc(text)).toEqual([]);
+  });
+
   it("returns an empty list for text without headings", () => {
     expect(parseToc("just prose\nmore prose")).toEqual([]);
   });

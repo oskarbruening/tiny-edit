@@ -132,7 +132,7 @@ describe("StateStore.patch / flush", () => {
       },
       promises: {
         ...fs.promises,
-        writeFile: async () => {
+        open: async () => {
           throw new Error("async boom");
         },
       },
@@ -145,6 +145,32 @@ describe("StateStore.patch / flush", () => {
     );
     store.flush();
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "sync boom" }));
+  });
+
+  it("a sync flush during an in-flight async write wins, whichever rename lands last", async () => {
+    let release: () => void = () => undefined;
+    const slow = {
+      ...fs,
+      promises: {
+        ...fs.promises,
+        rename: async (from: string, to: string) => {
+          await new Promise<void>((r) => (release = r));
+          return fs.promises.rename(from, to);
+        },
+      },
+    };
+    const store = new StateStore({ filePath: file, fs: slow as never, onError: silent, debounceMs: 1 });
+    store.load();
+    store.patch({ fontSize: 11 });
+    await new Promise((r) => setTimeout(r, 10)); // the async write is now parked before its rename
+    store.patch({ fontSize: 12 });
+    store.flush(); // quit: sync write of fontSize 12
+    expect(JSON.parse(fs.readFileSync(file, "utf8")).fontSize).toBe(12);
+    release(); // the stale rename (fontSize 11) lands after the flush …
+    await vi.waitFor(() => expect(JSON.parse(fs.readFileSync(file, "utf8")).fontSize).toBe(12)); // … and is overwritten again
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fs.readdirSync(dir)).toEqual(["state.json"]);
+    expect(store.dirty).toBe(false);
   });
 
   it("notifies subscribers after every patch, not on load", () => {

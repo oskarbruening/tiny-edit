@@ -175,7 +175,7 @@ describe("registerIpc", () => {
     fs.writeFileSync(b, new Uint8Array([0, 1]));
     const r = (await call(CHANNELS.filesAdd, [a, b, 7])) as { added: string[]; rejected: unknown[] };
     expect(r.added).toEqual([a]);
-    expect(r.rejected).toEqual([{ path: b, reason: "binary" }]);
+    expect(r.rejected).toEqual([{ path: b, reason: "extension" }]);
     expect(store.get().files.map((f) => f.path)).toEqual([a]);
     expect(sent).toEqual([{ channel: "files:opened", payload: { paths: [a] } }]);
     await call(CHANNELS.filesAdd, [a]);
@@ -184,6 +184,35 @@ describe("registerIpc", () => {
     await call(CHANNELS.filesAdd, [b]);
     expect(sent).toHaveLength(2); // nothing accepted → no push
     await expect(async () => call(CHANNELS.filesAdd, "a")).rejects.toThrow("expected an array");
+  });
+
+  it("files:add, files:openDialog and openPaths hand refused paths to the dialog hook", async () => {
+    const a = join(dir, "a.md");
+    const bad = join(dir, "photo.png");
+    fs.writeFileSync(a, "a");
+    fs.writeFileSync(bad, "x");
+    const onRejected = vi.fn();
+    const pickFiles = vi.fn(async () => [bad]);
+    const h = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();
+    registerIpc({
+      ipcMain: { handle: (ch, fn) => h.set(ch, fn) },
+      store,
+      files: new Files(fs),
+      shell,
+      clipboard,
+      onRejected,
+      pickFiles,
+    });
+    await h.get(CHANNELS.filesAdd)!(event, [a]);
+    expect(onRejected).not.toHaveBeenCalled(); // nothing refused → no dialog
+    await h.get(CHANNELS.filesAdd)!(event, [a, bad]);
+    expect(onRejected).toHaveBeenCalledWith([{ path: bad, reason: "extension" }]);
+    await h.get(CHANNELS.filesOpenDialog)!(event);
+    expect(onRejected).toHaveBeenCalledTimes(2);
+    const send = vi.fn();
+    await openPaths([bad], { files: new Files(fs), store, send, onRejected });
+    expect(onRejected).toHaveBeenCalledTimes(3);
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("files:reveal and files:copyPath act only on listed paths", async () => {
@@ -340,7 +369,7 @@ describe("registerIpc", () => {
 
   it("renderer:flushed forwards the sender id to the flush gate hook", () => {
     const onRendererFlushed = vi.fn();
-    const h = new Map<string, (event: IpcMainInvokeEvent) => unknown>();
+    const h = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();
     registerIpc({
       ipcMain: { handle: (ch, fn) => h.set(ch, fn) },
       store,
@@ -349,8 +378,13 @@ describe("registerIpc", () => {
       clipboard,
       onRendererFlushed,
     });
-    h.get(CHANNELS.rendererFlushed)!({ sender: { id: 42, send: vi.fn() } } as unknown as IpcMainInvokeEvent);
-    expect(onRendererFlushed).toHaveBeenCalledWith(42);
+    const ev = { sender: { id: 42, send: vi.fn() } } as unknown as IpcMainInvokeEvent;
+    h.get(CHANNELS.rendererFlushed)!(ev, { pending: ["/a.md", 7, "/b.md"] });
+    expect(onRendererFlushed).toHaveBeenCalledWith(42, ["/a.md", "/b.md"]);
+    h.get(CHANNELS.rendererFlushed)!(ev);
+    expect(onRendererFlushed).toHaveBeenLastCalledWith(42, []);
+    h.get(CHANNELS.rendererFlushed)!(ev, { pending: "nope" });
+    expect(onRendererFlushed).toHaveBeenLastCalledWith(42, []);
     call(CHANNELS.rendererFlushed); // no hook injected in the main fixture: must not throw
   });
 

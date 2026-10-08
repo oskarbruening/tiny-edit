@@ -1,7 +1,11 @@
 import type * as Fs from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import {
+  ACCEPTED_FORMATS_SUMMARY,
+  decodeUtf8,
+  decodeUtf8Lossy,
   detectEol,
+  extensionOf,
   isAcceptedExtension,
   looksLikeText,
   normalizeNewFileName,
@@ -13,13 +17,23 @@ import {
 import { writeAtomic, type AtomicFs } from "./atomicWrite";
 
 export type FilesFs = AtomicFs & {
-  promises: AtomicFs["promises"] &
-    Pick<typeof Fs.promises, "readFile" | "stat" | "lstat" | "readdir" | "open">;
+  promises: AtomicFs["promises"] & Pick<typeof Fs.promises, "readFile" | "lstat" | "readdir">;
 };
 
 export type FileStamp = { mtimeMs: number; size: number };
 
-export type ReadResult = { text: string; eol: Eol; bom: boolean; stamp: FileStamp; large: boolean };
+/**
+ * `readOnly` is true when the bytes are not valid UTF-8: `text` is then a lossy rendering for
+ * display only and must never be written back (it would replace the bad bytes with U+FFFD).
+ */
+export type ReadResult = {
+  text: string;
+  eol: Eol;
+  bom: boolean;
+  stamp: FileStamp;
+  large: boolean;
+  readOnly: boolean;
+};
 
 export type WriteRequest = {
   path: string;
@@ -33,8 +47,10 @@ export type WriteRequest = {
 
 export type WriteResult = { ok: true; stamp: FileStamp } | { ok: false; conflict: FileStamp };
 
-export type RejectReason = "not-absolute" | "missing" | "symlink" | "binary" | "unsupported";
-export type AcceptResult = { added: string[]; rejected: { path: string; reason: RejectReason }[] };
+/** Why a dropped/opened path was refused. `extension`: unknown type; `binary`: not UTF-8 text. */
+export type RejectReason = "not-absolute" | "missing" | "symlink" | "binary" | "extension" | "unsupported";
+export type Rejection = { path: string; reason: RejectReason };
+export type AcceptResult = { added: string[]; rejected: Rejection[] };
 
 export type CreateResult = { ok: true; path: string } | { ok: false; error: string };
 
@@ -46,6 +62,24 @@ export function stampOf(st: { mtimeMs: number; size: number }): FileStamp {
 
 export function sameStamp(a: FileStamp, b: FileStamp): boolean {
   return a.mtimeMs === b.mtimeMs && a.size === b.size;
+}
+
+const REASON_TEXT: Record<RejectReason, (path: string) => string> = {
+  extension: (p) => `unsupported file type (${extensionOf(p) || "no extension"})`,
+  binary: () => "not UTF-8 text",
+  missing: () => "file not found",
+  symlink: () => "symbolic links are not supported",
+  "not-absolute": () => "not an absolute path",
+  unsupported: () => "not a regular file",
+};
+
+/** Wording for the native "couldn't open" dialog: one line per refused path, plus what is accepted. */
+export function describeRejections(rejected: readonly Rejection[]): { message: string; detail: string } {
+  const lines = rejected.map((r) => `${basename(r.path) || r.path}: ${REASON_TEXT[r.reason](r.path)}`);
+  const message =
+    rejected.length === 1 ? "Couldn't open this file" : `Couldn't open ${rejected.length} files`;
+  const detail = `${lines.join("\n")}\n\nTiny Edit opens ${ACCEPTED_FORMATS_SUMMARY}.`;
+  return { message, detail };
 }
 
 export class Files {
@@ -60,11 +94,14 @@ export class Files {
     }
   }
 
-  /** Reads as UTF-8 (lossy on invalid bytes), strips a BOM, normalises CRLF → LF. */
+  /**
+   * Reads as strict UTF-8, strips a BOM, normalises the file's line ending to LF. Invalid UTF-8
+   * comes back `readOnly` with a lossy rendering, so the bytes on disk are never rewritten.
+   */
   async read(path: string): Promise<ReadResult> {
     const [buf, st] = await Promise.all([this.fs.promises.readFile(path), this.fs.promises.stat(path)]);
-    // ignoreBOM keeps the BOM in the string so stripBom can record and later restore it.
-    const raw = new TextDecoder("utf-8", { ignoreBOM: true }).decode(buf);
+    const strict = decodeUtf8(buf);
+    const raw = strict ?? decodeUtf8Lossy(buf);
     const { bom, text: unBommed } = stripBom(raw);
     const eol = detectEol(unBommed);
     return {
@@ -73,6 +110,7 @@ export class Files {
       bom,
       stamp: stampOf(st),
       large: st.size > LARGE_FILE_BYTES,
+      readOnly: strict === null,
     };
   }
 
@@ -109,8 +147,9 @@ export class Files {
   }
 
   /**
-   * Which of these dropped/opened paths become sidebar entries. Files: accepted extension or
-   * text sniff. Directories: direct children only, skipping dotfiles and symlinks, sorted by name.
+   * Which of these dropped/opened paths become sidebar entries. Files: an accepted extension (or
+   * none) and a UTF-8 text sniff. Directories: direct children only, skipping dotfiles, symlinks
+   * and refused children silently, sorted by name.
    */
   async accept(paths: readonly string[]): Promise<AcceptResult> {
     const result: AcceptResult = { added: [], rejected: [] };
@@ -139,8 +178,9 @@ export class Files {
       } else if (st.isDirectory()) {
         for (const child of await this.directChildren(path)) push(child);
       } else if (st.isFile()) {
-        if (await this.isText(path)) push(path);
-        else result.rejected.push({ path, reason: "binary" });
+        const verdict = await this.classify(path);
+        if (verdict === null) push(path);
+        else result.rejected.push({ path, reason: verdict });
       } else {
         result.rejected.push({ path, reason: "unsupported" });
       }
@@ -155,14 +195,20 @@ export class Files {
       .filter((e) => e.isFile() && !e.name.startsWith("."))
       .sort((a, b) => a.name.localeCompare(b.name))) {
       const path = join(dir, e.name);
-      if (await this.isText(path)) out.push(path);
+      if ((await this.classify(path)) === null) out.push(path);
     }
     return out;
   }
 
-  /** Accepted extension short-circuits the sniff; everything else must look like UTF-8 text. */
+  /** `null` when the file may be opened, otherwise why not. */
+  async classify(path: string): Promise<"extension" | "binary" | null> {
+    const base = basename(path);
+    if (extensionOf(base) && !isAcceptedExtension(base)) return "extension";
+    return (await this.isText(path)) ? null : "binary";
+  }
+
+  /** The first SNIFF_BYTES must look like UTF-8 text (no NUL, valid encoding). */
   async isText(path: string): Promise<boolean> {
-    if (isAcceptedExtension(basename(path))) return true;
     const handle = await this.fs.promises.open(path, "r");
     try {
       const buf = new Uint8Array(8 * 1024);

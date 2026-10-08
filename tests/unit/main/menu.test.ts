@@ -129,7 +129,7 @@ describe("fileContextTemplate", () => {
     const deps = { send: vi.fn(), reveal: vi.fn(), copyPath: vi.fn() };
     const t = fileContextTemplate("/x/a.md", deps);
     expect(t.map((i) => i.label ?? i.type)).toEqual([
-      "Remove from List",
+      "Remove from Sidebar",
       "separator",
       "Reveal in Finder",
       "Copy Path",
