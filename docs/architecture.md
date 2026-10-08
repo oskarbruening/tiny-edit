@@ -128,7 +128,7 @@ Every R→M handler validates types and paths; path-bearing calls other than `fi
 
 ## Themes (`src/shared/themes.ts`)
 
-- Six built-ins: Meadow (light), Tokyo Night, Catppuccin Latte (light), Frappé, Macchiato, Mocha (dark). UI roles are the hub's; syntax palettes are the canonical Tokyo Night / Catppuccin colours. `resolveTheme(setting, themes, appearance)` never fails (falls back to the defaults, then Meadow).
+- Seven built-ins: Meadow (light), Tokyo Night, Catppuccin Latte (light), Frappé, Macchiato, Mocha (dark), macOS Dark (dark). UI roles are the hub's; syntax palettes are the canonical Tokyo Night / Catppuccin colours, and Apple's system / Xcode Default (Dark) accents for macOS Dark. `resolveTheme(setting, themes, appearance)` never fails (falls back to the defaults, then Meadow).
 - Main: `UserThemes` loads `userData/themes/*.json` (defensive `parseUserTheme`: id from the file name, appearance from surface luminance, tokens filled from the matching built-in), watches the folder (200 ms debounce) and pushes `themes:changed`; `nativeTheme.updated` pushes `appearance:changed`; both plus theme-state changes rebuild the View → Theme menu (Automatic / fixed radios, Light/Dark-for-Automatic submenus, Open Themes Folder) and re-set the window's `backgroundColor` to the theme surface so nothing flashes.
 - Renderer: `applyTheme` writes every `--te-*` variable (`themeCssVars`), `data-appearance`, `data-theme` and `color-scheme` on `<html>`; re-painted on theme-state, theme-list and appearance changes. A unit test checks that every `var(--te-*)` used in `styles.css` is produced by `themeCssVars` (layout vars excepted) and that the CSS defaults equal Meadow.
 
@@ -190,7 +190,7 @@ type ThemeTokens = {
 };
 ```
 
-- Built-ins: Meadow (light), Tokyo Night (dark), Catppuccin Latte (light), Frappé, Macchiato, Mocha (dark), ported from the hub with syntax palettes added.
+- Built-ins: Meadow (light), Tokyo Night (dark), Catppuccin Latte (light), Frappé, Macchiato, Mocha (dark), macOS Dark (dark); the first six ported from the hub with syntax palettes added, macOS Dark from Apple's system dark colours + Xcode Default (Dark) syntax accents.
 - `parseThemeTokens(raw)` falls back field by field to Meadow; colours must match `^#[0-9a-fA-F]{6}$`, radius clamps to 0–24.
 - `themeCssVars(tokens)` → `--te-<kebab-role>` and `--te-syntax-<kebab-role>`, set on `<html>`; the main window's `backgroundColor` is updated to the new surface on switch.
 - Mode `auto` picks `theme.light` / `theme.dark` from `nativeTheme.shouldUseDarkColors`; mode `fixed` uses `theme.fixed`.

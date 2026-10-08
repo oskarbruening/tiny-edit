@@ -57,10 +57,11 @@ describe("Settings", () => {
       "catppuccin-frappe",
       "catppuccin-macchiato",
       "catppuccin-mocha",
+      "macos-dark",
     ]);
     expect(light.value).toBe("meadow");
     expect(dark.value).toBe("catppuccin-mocha");
-    expect(fixed.options).toHaveLength(6);
+    expect(fixed.options).toHaveLength(7);
     expect(fixed.disabled).toBe(true);
     expect(light.disabled).toBe(false);
     expect(q<HTMLInputElement>(".settings__font").value).toBe("3");
