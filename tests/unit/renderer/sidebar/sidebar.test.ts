@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { REORDER_MIME, reorder, Sidebar } from "../../../../src/renderer/sidebar/sidebar";
+import type { Heading } from "../../../../src/shared/toc";
+
+const heads = (...levels: Array<1 | 2>): Heading[] =>
+  levels.map((level, i) => ({ level, text: `h${i}`, from: i * 10, to: i * 10 + 5 }));
 
 const files = [
   { path: "/x/todo.md", anchor: 0, head: 0, scrollTop: 0 },
@@ -70,6 +74,84 @@ describe("Sidebar", () => {
     expect(aside.classList.contains("is-dragover")).toBe(true);
     sidebar.setDragOver(false);
     expect(aside.classList.contains("is-dragover")).toBe(false);
+  });
+
+  describe("outline (table of contents)", () => {
+    it("shows a chevron only for files with an outline (>=2 of a level)", () => {
+      const list = document.createElement("ul");
+      const tocs = new Map<string, Heading[]>([
+        ["/x/todo.md", heads(1, 2, 2)],
+        ["/x/notes.txt", heads(1)], // not enough for a TOC
+      ]);
+      new Sidebar(list, { onSelect: vi.fn() }).render(files, null, new Set(), tocs);
+      const items = [...list.querySelectorAll<HTMLElement>(".sidebar__item")];
+      expect(items[0]!.querySelector(".sidebar__chevron")).not.toBeNull();
+      expect(items[1]!.querySelector(".sidebar__chevron")).toBeNull();
+      expect(items[2]!.querySelector(".sidebar__chevron")).toBeNull();
+      expect(items[0]!.querySelector(".sidebar__name")?.textContent).toBe("todo");
+    });
+
+    it("clicking the chevron expands a flat list with H2s indented, and collapses again", () => {
+      const list = document.createElement("ul");
+      const tocs = new Map<string, Heading[]>([["/x/todo.md", heads(1, 2, 1)]]);
+      const onSelect = vi.fn();
+      const sidebar = new Sidebar(list, { onSelect });
+      sidebar.render(files, null, new Set(), tocs);
+      expect(list.querySelector(".sidebar__toc")).toBeNull();
+      const chevron = list.querySelector<HTMLElement>(".sidebar__chevron")!;
+      chevron.click();
+      const tocItems = [...list.querySelectorAll<HTMLElement>(".sidebar__toc-item")];
+      expect(tocItems.map((i) => i.textContent)).toEqual(["h0", "h1", "h2"]);
+      expect(tocItems[1]!.classList.contains("is-h2")).toBe(true);
+      expect(tocItems[0]!.classList.contains("is-h1")).toBe(true);
+      expect(onSelect).not.toHaveBeenCalled(); // the chevron does not select the file
+      list.querySelector<HTMLElement>(".sidebar__chevron")!.click();
+      expect(list.querySelector(".sidebar__toc")).toBeNull();
+    });
+
+    it("clicking an outline item reports the path and heading index; the name still selects the file", () => {
+      const list = document.createElement("ul");
+      const tocs = new Map<string, Heading[]>([["/x/todo.md", heads(1, 2, 2)]]);
+      const onSelect = vi.fn();
+      const onSelectHeading = vi.fn();
+      const sidebar = new Sidebar(list, { onSelect, onSelectHeading });
+      sidebar.render(files, null, new Set(), tocs);
+      list.querySelector<HTMLElement>(".sidebar__chevron")!.click();
+      list.querySelectorAll<HTMLElement>(".sidebar__toc-item")[1]!.click();
+      expect(onSelectHeading).toHaveBeenCalledWith("/x/todo.md", 1);
+      expect(onSelect).not.toHaveBeenCalled();
+      list.querySelector<HTMLElement>(".sidebar__name")!.click();
+      expect(onSelect).toHaveBeenCalledWith("/x/todo.md");
+    });
+
+    it("marks the outline item whose range matches the active file's scope", () => {
+      const list = document.createElement("ul");
+      const toc = heads(1, 2, 2); // item 1 is { from: 10, to: 15 }
+      const tocs = new Map<string, Heading[]>([["/x/todo.md", toc]]);
+      const sidebar = new Sidebar(list, { onSelect: vi.fn() });
+      sidebar.render(files, "/x/todo.md", new Set(), tocs, { from: 10, to: 15 });
+      list.querySelector<HTMLElement>(".sidebar__chevron")!.click();
+      const tocItems = [...list.querySelectorAll<HTMLElement>(".sidebar__toc-item")];
+      expect(tocItems[0]!.classList.contains("is-current")).toBe(false);
+      expect(tocItems[1]!.classList.contains("is-current")).toBe(true);
+    });
+
+    it("an empty heading renders a placeholder label", () => {
+      const list = document.createElement("ul");
+      const tocs = new Map<string, Heading[]>([
+        [
+          "/x/todo.md",
+          [
+            { level: 1, text: "", from: 0, to: 2 },
+            { level: 1, text: "b", from: 2, to: 4 },
+          ],
+        ],
+      ]);
+      const sidebar = new Sidebar(list, { onSelect: vi.fn() });
+      sidebar.render(files, null, new Set(), tocs);
+      list.querySelector<HTMLElement>(".sidebar__chevron")!.click();
+      expect(list.querySelector(".sidebar__toc-item")?.textContent).toBe("(untitled)");
+    });
   });
 
   describe("new-file input", () => {

@@ -2,6 +2,7 @@ import { EditorSelection, EditorState, type Extension } from "@codemirror/state"
 import { EditorView } from "@codemirror/view";
 import type { FileView } from "../store";
 import { editorExtensions } from "./extensions";
+import { scopeField, setScope, type ScopeRange } from "./scope";
 
 export type EditorHooks = {
   /** Caret/scroll settled (debounced) — persist it. */
@@ -82,6 +83,30 @@ export class Editor {
   text(path: string): string | null {
     if (path === this.current) return this.view.state.doc.toString();
     return this.states.get(path)?.doc.toString() ?? null;
+  }
+
+  /**
+   * Narrow the active file to a section (or clear with `null`). The whole document stays in the
+   * buffer; only the visible range changes. Puts the caret at the section start and scrolls to it.
+   */
+  applyScope(path: string, range: ScopeRange | null): void {
+    if (path !== this.current) return;
+    const length = this.view.state.doc.length;
+    const scope =
+      range && range.from < range.to
+        ? { from: Math.max(0, Math.min(range.from, length)), to: Math.max(0, Math.min(range.to, length)) }
+        : null;
+    this.view.dispatch({
+      effects: setScope.of(scope && scope.from < scope.to ? scope : null),
+      // Only move the caret and scroll when narrowing; clearing must not disturb a restored scroll.
+      ...(scope ? { selection: EditorSelection.single(scope.from), scrollIntoView: true } : {}),
+    });
+  }
+
+  /** The scoped range of a file, or null when it shows the whole document. */
+  scopeOf(path: string): ScopeRange | null {
+    const state = path === this.current ? this.view.state : this.states.get(path);
+    return state?.field(scopeField, false) ?? null;
   }
 
   /** Caret/scroll of the active file. */

@@ -3,11 +3,13 @@ import type { Api, MenuAction } from "../shared/ipc";
 import { DEFAULT_FONT_SIZE, FONT_SIZE_RANGE, SIDEBAR_WIDTH_RANGE, type AppState } from "../shared/state";
 import { displayName, parentDir } from "../shared/text";
 import { resolveTheme, type Appearance, type Theme } from "../shared/themes";
+import { parseToc, type Heading } from "../shared/toc";
 import { applyTheme } from "./theme/apply";
 import { installDivider } from "./divider";
 import { installDropzone } from "./dropzone";
 import { Autosave, type FileMeta } from "./autosave";
 import { Editor } from "./editor/editor";
+import type { ScopeRange } from "./editor/scope";
 import { Notice } from "./notice";
 import { Settings } from "./settings/settings";
 import { reorder, Sidebar } from "./sidebar/sidebar";
@@ -63,7 +65,9 @@ export type App = {
   autosave: Autosave;
   meta: Map<string, FileMeta>;
   missing: Set<string>;
-  openFile: (path: string) => Promise<void>;
+  /** Cached H1/H2 outline per loaded file, driving the sidebar chevrons and section scoping. */
+  tocs: Map<string, Heading[]>;
+  openFile: (path: string, scope?: ScopeRange | null) => Promise<void>;
   /** Re-read a file from disk into the editor (conflict "Reload", external change). */
   reloadFile: (path: string) => Promise<void>;
   /** Remove from the list after saving pending edits; opens a neighbour if it was active. */
@@ -109,11 +113,37 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
   /** Files whose disk copy changed while they had unsaved edits; the bar shows when they are active. */
   const conflicts = new Set<string>();
   const meta = new Map<string, FileMeta>();
+  const tocs = new Map<string, Heading[]>();
+  const tocTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** Recompute a loaded file's outline from its current buffer (or forget it when unloaded). */
+  function refreshToc(path: string): void {
+    const text = editor.text(path);
+    if (text == null) tocs.delete(path);
+    else tocs.set(path, parseToc(text));
+  }
+
+  /** Debounced outline refresh on typing — off the keystroke path, then re-render the sidebar. */
+  function scheduleToc(path: string): void {
+    const existing = tocTimers.get(path);
+    if (existing) clearTimeout(existing);
+    tocTimers.set(
+      path,
+      setTimeout(() => {
+        tocTimers.delete(path);
+        refreshToc(path);
+        render();
+      }, 200),
+    );
+  }
 
   const editor = new Editor(shell.editorHost, {
     hooks: {
       onViewChange: (path, view) => store.setFileView(path, view),
-      onDocChange: (path) => autosave.markDirty(path),
+      onDocChange: (path) => {
+        autosave.markDirty(path);
+        scheduleToc(path);
+      },
     },
   });
 
@@ -160,6 +190,14 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
 
   const sidebar = new Sidebar(shell.list, {
     onSelect: (path) => void openFile(path),
+    onSelectHeading: (path, index) =>
+      void openFile(path).then(() => {
+        const heading = tocs.get(path)?.[index];
+        if (heading) {
+          editor.applyScope(path, { from: heading.from, to: heading.to });
+          render();
+        }
+      }),
     onContextMenu: (path) => void api.showFileMenu(path),
     onCreate: async (name) => {
       const active = store.get().activePath;
@@ -181,7 +219,9 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
   });
   const render = (): void => {
     const s = store.get();
-    sidebar.render(s.files, s.activePath, missing);
+    const active = editor.currentPath;
+    const scope = active ? editor.scopeOf(active) : null;
+    sidebar.render(s.files, s.activePath, missing, tocs, scope);
   };
 
   async function load(path: string): Promise<{ text: string; large: boolean } | null> {
@@ -197,7 +237,8 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     }
   }
 
-  async function openFile(path: string): Promise<void> {
+  /** Show a file. `scope` null (the default) shows the whole file; a range narrows to a section. */
+  async function openFile(path: string, scope: ScopeRange | null = null): Promise<void> {
     const file = store.fileState(path);
     if (!file) return;
     if (editor.currentPath && editor.currentPath !== path) await autosave.flush(editor.currentPath);
@@ -214,6 +255,8 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
       if (!loaded) notice.show(MISSING_MESSAGE);
       else if (loaded.large) notice.show("Large file — highlighting may be slower");
     }
+    refreshToc(path);
+    editor.applyScope(path, scope);
     render();
   }
 
@@ -221,6 +264,7 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     const loaded = await load(path);
     if (loaded) {
       editor.replaceText(path, loaded.text);
+      refreshToc(path);
       if (path === editor.currentPath) notice.hide();
     } else if (path === editor.currentPath) notice.show(MISSING_MESSAGE);
     render();
@@ -239,6 +283,7 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     missing.delete(path);
     conflicts.delete(path);
     meta.delete(path);
+    tocs.delete(path);
     notice.hide();
     render();
     if (wasActive && neighbour) await openFile(neighbour.path);
@@ -357,6 +402,7 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     autosave,
     meta,
     missing,
+    tocs,
     openFile,
     reloadFile,
     removeFile,
@@ -374,6 +420,7 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
       unsubscribeAppearance();
       uninstallDrop();
       uninstallDivider();
+      for (const timer of tocTimers.values()) clearTimeout(timer);
       win.removeEventListener("blur", flushAll);
       doc.removeEventListener("visibilitychange", onVisibility);
       editor.destroy();
