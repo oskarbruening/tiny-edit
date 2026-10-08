@@ -12,7 +12,7 @@ A small, fast editor for plain-text and markdown files.
 - Basic markdown highlighting (disable in settings)
   - Quick copy buttons for `code spans` and code blocks (see below)
   - H1 and h2 headers (`#` and `##`) show up in the sidebar as a table-of-content
-  - Links like this <https://edensrise.com> have an open-in-browser button on hover
+  - Links like this https://edensrise.com have an open-in-browser button on hover
 - Support for all the usual "⌘N" (new file), "⌘O" (open file)
 - Themes available and customizable in settings
 
