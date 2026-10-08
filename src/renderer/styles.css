@@ -464,6 +464,17 @@ html.sidebar-hidden .sidebar {
   pointer-events: auto;
 }
 
+/* Open-link button: floats above the end of a Markdown link/autolink, revealed on line hover. */
+.te-open-link {
+  top: -0.95em;
+  left: 2px;
+}
+.cm-line:hover .te-open-link,
+.te-open-link:hover {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 /* Block: pinned to the top-right corner of the opening fence line (full content width). */
 .cm-line.te-copyblock {
   position: relative;

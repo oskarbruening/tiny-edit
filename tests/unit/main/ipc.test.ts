@@ -12,7 +12,7 @@ import { CHANNELS } from "../../../src/shared/ipc";
 let dir = "";
 let store: StateStore;
 const handlers = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();
-const shell = { showItemInFolder: vi.fn() };
+const shell = { showItemInFolder: vi.fn(), openExternal: vi.fn(async () => true) };
 const clipboard = { writeText: vi.fn() };
 let trusted = true;
 
@@ -22,6 +22,7 @@ beforeEach(async () => {
   store.load();
   handlers.clear();
   shell.showItemInFolder.mockClear();
+  shell.openExternal.mockClear();
   clipboard.writeText.mockClear();
   trusted = true;
   sent.length = 0;
@@ -199,6 +200,19 @@ describe("registerIpc", () => {
     call(CHANNELS.clipboardWrite, "const x = 1");
     expect(clipboard.writeText).toHaveBeenCalledWith("const x = 1");
     expect(() => call(CHANNELS.clipboardWrite, 42)).toThrow("text must be a string");
+  });
+
+  it("shell:openExternal opens allow-listed URLs and rejects everything else", () => {
+    for (const url of ["https://example.com", "http://example.com/x?y=1", "mailto:a@b.com"]) {
+      call(CHANNELS.shellOpenExternal, url);
+      expect(shell.openExternal).toHaveBeenLastCalledWith(url);
+    }
+    expect(shell.openExternal).toHaveBeenCalledTimes(3);
+    expect(() => call(CHANNELS.shellOpenExternal, 42)).toThrow("url must be a string");
+    expect(() => call(CHANNELS.shellOpenExternal, "not a url")).toThrow("invalid url");
+    expect(() => call(CHANNELS.shellOpenExternal, "file:///etc/passwd")).toThrow("unsupported protocol");
+    expect(() => call(CHANNELS.shellOpenExternal, "javascript:alert(1)")).toThrow("unsupported protocol");
+    expect(shell.openExternal).toHaveBeenCalledTimes(3); // no rejected call reached shell
   });
 
   it("file:read and successful file:write report the stamp the renderer now holds", async () => {

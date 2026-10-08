@@ -19,6 +19,28 @@ export const editorTheme = EditorView.theme({
   ".cm-scroller": { fontFamily: "var(--te-font-mono)", lineHeight: "1.5", overflow: "auto" },
   ".cm-content": { caretColor: "var(--te-ink)", padding: "12px 0" },
   ".cm-line": { padding: "0 16px" },
+  // Fenced code blocks: a subtle inset panel (edge to edge bar a small side margin) with a border.
+  // Horizontal margin + reduced padding keep the text at the same x as ordinary lines; no vertical
+  // margin, so consecutive block lines abut into one continuous panel.
+  ".cm-line.te-codeblock-line": {
+    backgroundColor: "var(--te-surface-container)",
+    margin: "0 8px",
+    padding: "0 7px",
+    borderLeft: "1px solid var(--te-line)",
+    borderRight: "1px solid var(--te-line)",
+  },
+  ".cm-line.te-codeblock-first": {
+    borderTop: "1px solid var(--te-line)",
+    borderTopLeftRadius: "var(--te-radius-sm)",
+    borderTopRightRadius: "var(--te-radius-sm)",
+    paddingTop: "2px",
+  },
+  ".cm-line.te-codeblock-last": {
+    borderBottom: "1px solid var(--te-line)",
+    borderBottomLeftRadius: "var(--te-radius-sm)",
+    borderBottomRightRadius: "var(--te-radius-sm)",
+    paddingBottom: "2px",
+  },
   "&.cm-focused": { outline: "none" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--te-ink)" },
   ".cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {

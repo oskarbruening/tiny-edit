@@ -13,7 +13,7 @@ export type IpcDeps = {
   ipcMain: IpcMainLike;
   store: StateStore;
   files: Files;
-  shell: { showItemInFolder(path: string): void };
+  shell: { showItemInFolder(path: string): void; openExternal(url: string): Promise<unknown> };
   clipboard: { writeText(text: string): void };
   /** Only our own renderer may call. Default accepts everything (unit tests inject a checker). */
   isTrustedSender?: (event: IpcMainInvokeEvent) => boolean;
@@ -133,6 +133,19 @@ export function registerIpc(deps: IpcDeps): void {
   guard(CHANNELS.clipboardWrite, (_event, raw) => {
     if (typeof raw !== "string") throw new IpcError("clipboard:write: text must be a string");
     clipboard.writeText(raw);
+  });
+
+  guard(CHANNELS.shellOpenExternal, (_event, raw) => {
+    if (typeof raw !== "string") throw new IpcError("shell:openExternal: url must be a string");
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      throw new IpcError("shell:openExternal: invalid url");
+    }
+    if (!["https:", "http:", "mailto:"].includes(parsed.protocol))
+      throw new IpcError("shell:openExternal: unsupported protocol");
+    void shell.openExternal(raw);
   });
 
   guard(CHANNELS.rendererFlushed, (event) => {

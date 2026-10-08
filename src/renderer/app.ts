@@ -9,6 +9,7 @@ import { installDivider } from "./divider";
 import { installDropzone } from "./dropzone";
 import { Autosave, type FileMeta } from "./autosave";
 import { copyButtons } from "./editor/copy";
+import { openLinks } from "./editor/links";
 import { Editor } from "./editor/editor";
 import type { ScopeRange } from "./editor/scope";
 import { Notice } from "./notice";
@@ -146,7 +147,10 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
         scheduleToc(path);
       },
     },
-    extensions: [copyButtons((text) => void api.copyText(text))],
+    extensions: [
+      copyButtons((text) => void api.copyText(text)),
+      openLinks((url) => void api.openExternal(url)),
+    ],
   });
 
   const autosave = new Autosave({

@@ -38,6 +38,10 @@ describe("createApi", () => {
     await expect(api.revealFile("/a.md")).resolves.toEqual({ channel: "files:reveal", args: ["/a.md"] });
     await expect(api.copyPath("/a.md")).resolves.toEqual({ channel: "files:copyPath", args: ["/a.md"] });
     await expect(api.copyText("code")).resolves.toEqual({ channel: "clipboard:write", args: ["code"] });
+    await expect(api.openExternal("https://example.com")).resolves.toEqual({
+      channel: "shell:openExternal",
+      args: ["https://example.com"],
+    });
     await expect(api.flushed()).resolves.toEqual({ channel: "renderer:flushed", args: [] });
     await expect(api.showFileMenu("/a.md")).resolves.toEqual({
       channel: "files:contextMenu",
