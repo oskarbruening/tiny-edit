@@ -465,6 +465,62 @@ describe("boot", () => {
     });
   });
 
+  describe("table of contents", () => {
+    const md = "# Alpha\nalpha body\n## A1\nnested\n# Beta\nbeta body";
+    const docState = (): AppState => ({
+      ...defaultState(),
+      files: [{ path: "/doc.md", anchor: 0, head: 0, scrollTop: 0 }],
+      activePath: "/doc.md",
+    });
+
+    it("builds an outline, scopes to a clicked section, and clears it when the name is clicked", async () => {
+      const { api } = fakeApi(docState(), { "/doc.md": md });
+      const app = await boot(document.createElement("div"), api);
+      apps.push(app);
+      expect(app.tocs.get("/doc.md")?.map((h) => h.text)).toEqual(["Alpha", "A1", "Beta"]);
+      const chevron = app.shell.list.querySelector<HTMLElement>(".sidebar__chevron");
+      expect(chevron).not.toBeNull();
+      chevron!.click();
+      expect([...app.shell.list.querySelectorAll(".sidebar__toc-item")].map((i) => i.textContent)).toEqual([
+        "Alpha",
+        "A1",
+        "Beta",
+      ]);
+
+      app.shell.list.querySelectorAll<HTMLElement>(".sidebar__toc-item")[2]!.click(); // Beta
+      await vi.waitFor(() => expect(app.editor.scopeOf("/doc.md")).not.toBeNull());
+      const beta = app.tocs.get("/doc.md")![2]!;
+      expect(app.editor.scopeOf("/doc.md")).toEqual({ from: beta.from, to: beta.to });
+      expect(app.editor.view.state.doc.toString()).toBe(md); // whole file still in the buffer
+      expect(app.shell.list.querySelector(".sidebar__toc-item.is-current")?.textContent).toBe("Beta");
+
+      app.shell.list.querySelector<HTMLElement>(".sidebar__name")!.click(); // the filename → full file
+      await vi.waitFor(() => expect(app.editor.scopeOf("/doc.md")).toBeNull());
+      expect(app.shell.list.querySelector(".sidebar__toc-item.is-current")).toBeNull();
+    });
+
+    it("refreshes the outline after typing settles", async () => {
+      vi.useFakeTimers();
+      const { api } = fakeApi(docState(), { "/doc.md": "# One\n# Two" });
+      const app = await boot(document.createElement("div"), api);
+      apps.push(app);
+      expect(app.tocs.get("/doc.md")?.map((h) => h.text)).toEqual(["One", "Two"]);
+      app.editor.view.dispatch({ changes: { from: app.editor.view.state.doc.length, insert: "\n# Three" } });
+      await vi.advanceTimersByTimeAsync(400); // outline (200 ms) and autosave (300 ms) both settle
+      expect(app.tocs.get("/doc.md")?.map((h) => h.text)).toEqual(["One", "Two", "Three"]);
+      vi.useRealTimers();
+    });
+
+    it("drops the outline when a file is removed from the list", async () => {
+      const { api } = fakeApi(docState(), { "/doc.md": md });
+      const app = await boot(document.createElement("div"), api);
+      apps.push(app);
+      expect(app.tocs.has("/doc.md")).toBe(true);
+      await app.removeFile("/doc.md");
+      expect(app.tocs.has("/doc.md")).toBe(false);
+    });
+  });
+
   describe("menu actions and removal", () => {
     it("Cmd+W / closeFile saves pending edits, removes the active file, and opens its neighbour", async () => {
       const f = fakeApi(twoFiles(), { "/a.md": "aaa", "/b.md": "bbb" });

@@ -7,6 +7,7 @@ import { drawSelection, EditorView, keymap, scrollPastEnd } from "@codemirror/vi
 import { insertTwoSpaces, outdent } from "./commands";
 import { codeLanguages, genericLanguage } from "./languages";
 import { rainbowBrackets } from "./rainbow";
+import { scopeExtension } from "./scope";
 import { editorTheme, highlighting, markdownTagExtension } from "./theme";
 
 /** The product rules as CodeMirror configuration. Order matters: our keys win over defaults. */
@@ -37,6 +38,7 @@ export function editorExtensions(extra: readonly Extension[] = []): Extension[] 
     highlighting,
     rainbowBrackets,
     editorTheme,
+    scopeExtension,
     keymap.of([...searchKeymap, ...historyKeymap, ...defaultKeymap]),
     EditorState.allowMultipleSelections.of(true),
     ...extra,

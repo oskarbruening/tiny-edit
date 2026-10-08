@@ -40,13 +40,15 @@ A macOS Electron app for editing Markdown and plain-text files quickly. One wind
 ┌─ renderer (browser, vanilla TS) ───────────────────────────────┐
 │ main.ts         bootstrap: state -> theme -> sidebar -> editor  │
 │ store.ts        in-memory view state, patches -> state:patch    │
-│ sidebar/        list, selection, drag reorder, drop, context    │
+│ sidebar/        list, selection, drag reorder, drop, context,  │
+│                 per-file outline chevron + flattened H1/H2 TOC  │
 │ editor/         CM6 setup, markdown + fenced langs, highlight   │
-│                 style -> CSS vars, autosave scheduler, undo map │
+│                 style -> CSS vars, autosave scheduler, undo map,│
+│                 scope.ts (narrow to a section, hide the rest)   │
 │ conflict.ts     "Changed on disk · Reload / Keep mine" bar      │
 │ theme/          tokens -> --te-* on <html>, Auto (light/dark)   │
 └────────────────────────────────────────────────────────────────┘
-shared/  ipc.ts (channels + Api type) · types.ts · themes.ts (tokens, parser, built-ins) · text.ts (line-ending detect, UTF-8 sniff)
+shared/  ipc.ts (channels + Api type) · types.ts · themes.ts (tokens, parser, built-ins) · text.ts (line-ending detect, UTF-8 sniff) · toc.ts (H1/H2 outline parse)
 ```
 
 ## Data flow
@@ -60,6 +62,10 @@ shared/  ipc.ts (channels + Api type) · types.ts · themes.ts (tokens, parser, 
 **Adding files.** Sidebar `drop` → preload `getPathForFile` per `File` → `files:add [paths]` → main: absolute, exists, regular file (folders → direct children), accepted (`.md .markdown .txt .text` or first 8 KB decodes as UTF-8 with no NUL) → appended to `state.files`, duplicates ignored → renderer selects the first new file. Same path for `open-file` (Finder double-click / Dock drop) and File → Open… (`dialog.showOpenDialog`). `Cmd+N` → prompt for name in-app → `file:create { dir, name }` next to the active file (Documents if none) → added and selected.
 
 **Sidebar actions.** Click → switch (flush current, load next, restore per-file view state). Drag → reorder (`state:patch { files }`). Right-click → native context menu: Remove from list (also `Cmd+W` for the active file), Reveal in Finder, Copy path. `Cmd+N` → inline name input at the bottom of the list (Enter creates `name.md` next to the active file, or in Documents when the list is empty; Esc cancels; errors inline). Drops are accepted anywhere in the window (`installDropzone`): the sidebar highlights, paths go through `files:add`, the text is never touched. Reordering is HTML5 drag with the private MIME `application/x-tiny-edit-path` so it can never be confused with a Finder drop (`reorder()` is pure). The divider (`installDivider`) previews the width live and commits once on release (120–600 px); `Cmd+\` toggles `sidebarVisible`; `Cmd+=`/`-`/`0` zoom `fontSize` 8–48.
+
+**Outline (table of contents).** `shared/toc.ts` `parseToc(text)` returns the `# `/`## ` headings (exactly one or two `#` then a space; `###`+ ignored; `#` inside fenced code ignored) in document order with each heading's section range `[from, to)` — an H1 runs to the next H1 (so it includes its H2s), an H2 to the next heading of either level. `hasOutline` is true when a file has ≥2 H1s or ≥2 H2s; only then does the sidebar show a right-aligned chevron next to the file name. Clicking the chevron expands a flattened list (H2s indented under their H1) below the name. The outline is computed from the in-memory buffer of loaded files — opening a file (and a 200 ms-debounced recompute while typing) refreshes it; a never-opened file has no chevron until first opened. Clicking a heading opens the file if needed and **narrows** the editor to that section; clicking an H1 shows the whole H1 section (with its H2s), clicking an H2 shows only that subsection; clicking the file name shows the whole file again. Narrowing is renderer-only — no IPC, no change to the file on disk.
+
+Narrowing is `editor/scope.ts`: a `StateField<{from,to}|null>` set by a `setScope` effect and mapped through edits (`from` biases left, `to` right, so text typed at a boundary stays inside; the scope clears if the section is deleted). It hides `[0,from)` and `[to,len)` with replace decorations, marks them atomic so the caret can't enter, and a `changeFilter` protects them so edits can only touch the visible section. The full document always stays in the buffer, so autosave still writes the whole file atomically. An external reload rebuilds the state and drops the scope.
 
 **Links.** `Cmd+click` on a Markdown link or bare URL → `shell:openExternal` → main parses with `new URL` and allows only `https:`, `http:`, `mailto:`.
 
@@ -212,12 +218,13 @@ type ThemeTokens = {
 
 ## Testing map
 
-| Area                                      | Unit (Vitest)                                                  | E2E (Playwright `_electron`)                              |
-| ----------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------- |
-| state, windowState                        | parse/defaults/corrupt file, debounce, display validation      | size on first launch, restore after relaunch              |
-| files, text                               | atomic write, EOL detection, UTF-8 sniff, accept rules, create | open, switch, autosave visible on disk                    |
-| watcher                                   | self-write suppression, debounce, missing file                 | external edit → reload keeps caret; dirty → conflict bar  |
-| ipc                                       | every handler's validation, rejects foreign paths              | —                                                         |
-| preload                                   | API shape, unsubscribe, getPathForFile wrapper                 | —                                                         |
-| renderer: sidebar, store, conflict, theme | DOM behaviour in happy-dom                                     | drop via `files:add`, reorder, remove, Cmd+W, Cmd+\       |
-| editor                                    | commands (Tab, Enter), highlight tags → vars, no auto-insert   | type `"`/`(`/`"` and assert bytes unchanged; theme switch |
+| Area                                      | Unit (Vitest)                                                                                                  | E2E (Playwright `_electron`)                                                  |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| state, windowState                        | parse/defaults/corrupt file, debounce, display validation                                                      | size on first launch, restore after relaunch                                  |
+| files, text                               | atomic write, EOL detection, UTF-8 sniff, accept rules, create                                                 | open, switch, autosave visible on disk                                        |
+| watcher                                   | self-write suppression, debounce, missing file                                                                 | external edit → reload keeps caret; dirty → conflict bar                      |
+| ipc                                       | every handler's validation, rejects foreign paths                                                              | —                                                                             |
+| preload                                   | API shape, unsubscribe, getPathForFile wrapper                                                                 | —                                                                             |
+| renderer: sidebar, store, conflict, theme | DOM behaviour in happy-dom                                                                                     | drop via `files:add`, reorder, remove, Cmd+W, Cmd+\                           |
+| editor                                    | commands (Tab, Enter), highlight tags → vars, no auto-insert                                                   | type `"`/`(`/`"` and assert bytes unchanged; theme switch                     |
+| outline (toc, scope)                      | parseToc levels/ranges/fences, hasOutline, scope field mapping + changeFilter, sidebar chevron/TOC, applyScope | chevron scopes to a section, editing writes the whole file, name clears scope |

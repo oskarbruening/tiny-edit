@@ -114,6 +114,22 @@ describe("Editor", () => {
     expect(hooks.onViewChange).not.toHaveBeenCalled();
   });
 
+  it("applyScope narrows the active file and clears it, ignoring background and empty ranges", () => {
+    const { editor } = make();
+    editors.push(editor);
+    editor.open("/a.md", "line0\nline1\nline2");
+    editor.applyScope("/a.md", { from: 6, to: 12 });
+    expect(editor.scopeOf("/a.md")).toEqual({ from: 6, to: 12 });
+    expect(editor.view.state.selection.main.head).toBe(6); // caret moved to the section start
+    expect(editor.text("/a.md")).toBe("line0\nline1\nline2"); // whole file still in the buffer
+    editor.applyScope("/a.md", null);
+    expect(editor.scopeOf("/a.md")).toBeNull();
+    editor.applyScope("/a.md", { from: 5, to: 5 }); // empty range → no scope
+    expect(editor.scopeOf("/a.md")).toBeNull();
+    editor.applyScope("/b.md", { from: 0, to: 1 }); // not the active file → ignored
+    expect(editor.scopeOf("/b.md")).toBeNull();
+  });
+
   it("does not steal focus from another form control when a file finishes opening", () => {
     vi.useFakeTimers();
     const host = document.createElement("div");

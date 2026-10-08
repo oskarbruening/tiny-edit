@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 2026-10-07 — Outline: a file with two or more `#` or `## ` headings shows a chevron in the sidebar; expand it for a flattened table of contents (H2s indented) and click a heading to focus the editor on just that section (an H1 includes its H2s). Editing the focused section still saves the whole file; click the file name to see all of it again.
+
 - 2026-10-07 — Settings: App menu → Settings… (Cmd+,) opens an in-window panel to choose the theme (Automatic with a light/dark pair, or Fixed) and the editor font size with a five-step slider (10–18 px, 14 px in the middle).
 
 - 2026-10-07 — Fix: the app icon showed a grey tile around the logo and a garbled small icon in Finder lists; it is now a solid dark full-bleed icon with a correctly built `.icns`. `npm run icon` regenerates both from `logo.png`.
