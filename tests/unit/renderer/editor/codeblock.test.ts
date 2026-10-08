@@ -26,6 +26,21 @@ describe("buildCodeBlocks", () => {
     const v = view("```js\nf(a)\ng(b)\n```\n");
     expect(buildCodeBlocks(v.state).size).toBe(4);
   });
+
+  it("only visits blocks that touch the given ranges, and never decorates a block twice", () => {
+    const doc = "```\na\n```\n\ntext\n\n```\nb\n```\n";
+    const v = view(doc);
+    const second = doc.indexOf("```\nb");
+    expect(buildCodeBlocks(v.state, [{ from: 0, to: 3 }]).size).toBe(3);
+    expect(buildCodeBlocks(v.state, [{ from: second, to: doc.length }]).size).toBe(3);
+    expect(
+      buildCodeBlocks(v.state, [
+        { from: 0, to: 3 },
+        { from: 1, to: 4 },
+      ]).size,
+    ).toBe(3);
+    expect(buildCodeBlocks(v.state, [{ from: 11, to: 15 }]).size).toBe(0); // the prose between
+  });
 });
 
 describe("code block background decorations", () => {

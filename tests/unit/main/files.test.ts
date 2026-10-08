@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Files, sameStamp } from "../../../src/main/files";
+import { describeRejections, Files, sameStamp } from "../../../src/main/files";
 
 let dir = "";
 let files: Files;
@@ -25,9 +25,24 @@ describe("Files.read", () => {
   it("returns normalised text, eol, bom and a stamp", async () => {
     const p = write("a.md", "\uFEFFone\r\ntwo\r\n");
     const r = await files.read(p);
-    expect(r).toMatchObject({ text: "one\ntwo\n", eol: "\r\n", bom: true, large: false });
+    expect(r).toMatchObject({ text: "one\ntwo\n", eol: "\r\n", bom: true, large: false, readOnly: false });
     expect(r.stamp.size).toBe(fs.statSync(p).size);
     expect(r.stamp.mtimeMs).toBe(fs.statSync(p).mtimeMs);
+  });
+  it("opens a file that is not valid UTF-8 read-only with a lossy rendering, never rewriting it", async () => {
+    const latin1 = new Uint8Array([0x63, 0x61, 0x66, 0xe9, 0x0a]); // "café\n" in ISO-8859-1
+    const p = write("latin.txt", latin1);
+    const r = await files.read(p);
+    expect(r.readOnly).toBe(true);
+    expect(r.text).toBe("caf\uFFFD\n");
+    expect(new Uint8Array(fs.readFileSync(p))).toEqual(latin1);
+  });
+  it("round-trips a classic Mac (CR) file byte for byte", async () => {
+    const p = write("mac.txt", "one\rtwo\r");
+    const r = await files.read(p);
+    expect(r).toMatchObject({ text: "one\ntwo\n", eol: "\r" });
+    await files.write({ path: p, text: r.text + "three\n", eol: r.eol, bom: r.bom });
+    expect(fs.readFileSync(p, "utf8")).toBe("one\rtwo\rthree\r");
   });
   it("flags large files", async () => {
     const p = write("big.txt", "x");
@@ -130,16 +145,37 @@ describe("Files.create", () => {
 });
 
 describe("Files.accept", () => {
-  it("accepts by extension or sniff, rejects binary, missing, relative and symlinks", async () => {
+  it("accepts listed extensions and extensionless text; rejects unknown types, non-UTF-8, missing, relative and symlinks", async () => {
     const md = write("a.md", "# hi");
-    const plain = write("script.py", "print('hi')\n");
+    const py = write("script.py", "print('hi')\n");
+    const json = write("data.json", "{}");
+    const noExt = write("README", "plain text, no extension");
     const png = write("img.png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00]));
+    const latin = write("latin.txt", new Uint8Array([0x63, 0x61, 0x66, 0xe9]));
+    const nul = write("nul.md", new Uint8Array([0x68, 0x00, 0x69]));
+    const unknown = write("notes.xyz", "looks like text but the type is unknown");
     const link = join(dir, "link.md");
     fs.symlinkSync(md, link);
-    const r = await files.accept([md, plain, png, join(dir, "missing.md"), "relative.md", link, md]);
-    expect(r.added).toEqual([md, plain]);
+    const r = await files.accept([
+      md,
+      py,
+      json,
+      noExt,
+      png,
+      latin,
+      nul,
+      unknown,
+      join(dir, "missing.md"),
+      "relative.md",
+      link,
+      md,
+    ]);
+    expect(r.added).toEqual([md, py, json, noExt]);
     expect(r.rejected).toEqual([
-      { path: png, reason: "binary" },
+      { path: png, reason: "extension" },
+      { path: latin, reason: "binary" },
+      { path: nul, reason: "binary" },
+      { path: unknown, reason: "extension" },
       { path: join(dir, "missing.md"), reason: "missing" },
       { path: "relative.md", reason: "not-absolute" },
       { path: link, reason: "symlink" },
@@ -156,9 +192,10 @@ describe("Files.accept", () => {
     fs.writeFileSync(join(sub, "bin.dat"), new Uint8Array([0, 1, 2]));
     fs.writeFileSync(join(sub, "readme"), "plain text, no extension");
     fs.symlinkSync(join(sub, "b.md"), join(sub, "c.md"));
+    fs.writeFileSync(join(sub, "photo.jpg"), "not really a photo");
     const r = await files.accept([sub]);
     expect(r.added).toEqual([join(sub, "a.txt"), join(sub, "b.md"), join(sub, "readme")]);
-    expect(r.rejected).toEqual([]);
+    expect(r.rejected).toEqual([]); // children a folder cannot offer are skipped quietly
   });
 
   it("rejects special files and non-string entries", async () => {
@@ -174,5 +211,29 @@ describe("Files.accept", () => {
     const md = write("a.md", "x");
     const r = await files.accept([join(dir, "sub", "..", "a.md")]);
     expect(r.added).toEqual([md]);
+  });
+});
+
+describe("describeRejections", () => {
+  it("names each refused file with its reason and says what is accepted", () => {
+    const one = describeRejections([{ path: "/x/report.pdf", reason: "extension" }]);
+    expect(one.message).toBe("Couldn't open this file");
+    expect(one.detail).toContain("report.pdf: unsupported file type (.pdf)");
+    expect(one.detail).toContain("Tiny Edit opens Markdown, plain text, JSON");
+    const many = describeRejections([
+      { path: "/x/old.txt", reason: "binary" },
+      { path: "/x/gone.md", reason: "missing" },
+      { path: "/x/link.md", reason: "symlink" },
+      { path: "/dev/null", reason: "unsupported" },
+      { path: "rel.md", reason: "not-absolute" },
+      { path: "/x/Makefile", reason: "extension" },
+    ]);
+    expect(many.message).toBe("Couldn't open 6 files");
+    expect(many.detail).toContain("old.txt: not UTF-8 text");
+    expect(many.detail).toContain("gone.md: file not found");
+    expect(many.detail).toContain("link.md: symbolic links are not supported");
+    expect(many.detail).toContain("null: not a regular file");
+    expect(many.detail).toContain("rel.md: not an absolute path");
+    expect(many.detail).toContain("Makefile: unsupported file type (no extension)");
   });
 });

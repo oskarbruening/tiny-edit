@@ -72,6 +72,40 @@ describe("writeAtomic", () => {
     expect(await readdir(join(dir, "a"))).toEqual(["state.json"]);
   });
 
+  it("keeps the target's permission bits across the rename (a private note stays private)", async () => {
+    const target = join(dir, "private.md");
+    fs.writeFileSync(target, "secret", { mode: 0o600 });
+    await writeAtomic(fs, target, "secret 2");
+    expect(fs.statSync(target).mode & 0o777).toBe(0o600);
+    const exec = join(dir, "run.sh");
+    fs.writeFileSync(exec, "#!/bin/sh", { mode: 0o755 });
+    await writeAtomic(fs, exec, "#!/bin/sh\necho hi");
+    expect(fs.statSync(exec).mode & 0o777).toBe(0o755);
+  });
+
+  it("fsyncs the temp file before renaming", async () => {
+    const target = join(dir, "s.json");
+    const synced: string[] = [];
+    const spied = {
+      ...fs,
+      promises: {
+        ...fs.promises,
+        open: async (...args: Parameters<typeof fs.promises.open>) => {
+          const handle = await fs.promises.open(...args);
+          const sync = handle.sync.bind(handle);
+          handle.sync = async () => {
+            synced.push("sync");
+            await sync();
+          };
+          return handle;
+        },
+      },
+    };
+    await writeAtomic(spied as never, target, "x");
+    expect(synced).toEqual(["sync"]);
+    expect(await readFile(target, "utf8")).toBe("x");
+  });
+
   it("cleans up and rethrows on rename failure", async () => {
     const target = join(dir, "s.json");
     const broken = {
@@ -93,7 +127,7 @@ describe("writeAtomic", () => {
       ...fs,
       promises: {
         ...fs.promises,
-        writeFile: vi.fn(async () => {
+        open: vi.fn(async () => {
           throw new Error("disk full");
         }),
         unlink: vi.fn(async () => {

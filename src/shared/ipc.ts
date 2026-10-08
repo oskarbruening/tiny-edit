@@ -22,7 +22,7 @@ export const CHANNELS = {
   shellOpenExternal: "shell:openExternal",
   /** M→R: files were added to the list (drop, Cmd+N, Finder open). */
   filesOpened: "files:opened",
-  /** M→R: the window is closing; save everything, then answer with renderer:flushed. */
+  /** M→R: the window is closing; save everything, then answer with renderer:flushed { pending }. */
   rendererFlush: "renderer:flush",
   rendererFlushed: "renderer:flushed",
   /** M→R: a listed file changed on disk (not by us) / disappeared. */
@@ -49,7 +49,15 @@ export type Channel = (typeof CHANNELS)[keyof typeof CHANNELS];
 export type Versions = { electron: string; chrome: string; node: string };
 
 export type FileStamp = { mtimeMs: number; size: number };
-export type ReadFileResult = { text: string; eol: Eol; bom: boolean; stamp: FileStamp; large: boolean };
+/** `readOnly`: the bytes are not valid UTF-8; `text` is a lossy rendering that must never be written back. */
+export type ReadFileResult = {
+  text: string;
+  eol: Eol;
+  bom: boolean;
+  stamp: FileStamp;
+  large: boolean;
+  readOnly: boolean;
+};
 export type WriteFileRequest = {
   path: string;
   text: string;
@@ -75,7 +83,7 @@ export type Api = {
   writeFile(req: WriteFileRequest): Promise<WriteFileResult>;
   /** Creates an empty file (`.md` appended when no extension) and adds it to the list. `dir` null → Documents. */
   createFile(dir: string | null, name: string): Promise<CreateFileResult>;
-  /** Validates dropped/opened paths, appends the accepted ones to the list, returns both sets. */
+  /** Validates dropped/opened paths, appends the accepted ones to the list, returns both sets. Main shows a dialog for refused paths. */
   addFiles(paths: string[]): Promise<AddFilesResult>;
   revealFile(path: string): Promise<void>;
   copyPath(path: string): Promise<void>;
@@ -95,8 +103,8 @@ export type Api = {
   onFilesOpened(cb: (payload: FilesOpened) => void): () => void;
   /** Main is about to close the window and wants pending saves written. */
   onFlushRequest(cb: () => void): () => void;
-  /** Answer to onFlushRequest once every pending save has been written. */
-  flushed(): Promise<void>;
+  /** Answer to onFlushRequest once every save that can be written has been; `pending` lists files still unsaved. */
+  flushed(pending: string[]): Promise<void>;
   /** A listed file changed on disk by something other than us. */
   onWatchChanged(cb: (payload: WatchChanged) => void): () => void;
   /** A listed file is no longer on disk. */

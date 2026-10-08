@@ -1,5 +1,6 @@
 import { syntaxTree } from "@codemirror/language";
 import type { EditorState, Range } from "@codemirror/state";
+import type { SyntaxNode } from "@lezer/common";
 import {
   Decoration,
   type DecorationSet,
@@ -9,6 +10,7 @@ import {
   type ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
+import { wholeDoc, type VisibleRange } from "./codeblock";
 import { icon, svgEl as el } from "./svg";
 
 /** Opens a URL somewhere (the default browser, via IPC; a spy in tests). */
@@ -76,30 +78,40 @@ class OpenLinkWidget extends WidgetType {
   }
 }
 
-/** Every openable link/autolink in the document: a `Link` with an openable destination, or a bare autolink. */
-export function linkTargets(state: EditorState): LinkTarget[] {
+/**
+ * Every openable link/autolink touching `ranges` (the viewport by default in the plugin): a
+ * `Link` with an openable destination, or a bare autolink.
+ */
+export function linkTargets(
+  state: EditorState,
+  ranges: readonly VisibleRange[] = wholeDoc(state),
+): LinkTarget[] {
   const targets: LinkTarget[] = [];
-  syntaxTree(state).iterate({
-    enter(node) {
-      if (node.name === "Link") {
-        const urlNode = node.node.getChild("URL");
-        if (urlNode) {
-          const url = cleanUrl(state.doc.sliceString(urlNode.from, urlNode.to));
-          if (isOpenableUrl(url)) targets.push({ from: node.from, to: node.to, url });
-        }
-        return false; // don't descend into the link's own URL child
-      }
-      // Images embed, they don't navigate; skip their subtree so the image URL gets no icon.
-      if (node.name === "Image") return false;
-      if (node.name === "URL") {
-        // Standalone URL: an autolink (<url>) or a reference-definition destination.
-        const url = cleanUrl(state.doc.sliceString(node.from, node.to));
+  const seen = new Set<number>();
+  const enter = (node: { name: string; from: number; to: number; node: SyntaxNode }): boolean | undefined => {
+    if (node.name === "Link") {
+      if (seen.has(node.from)) return false;
+      seen.add(node.from);
+      const urlNode = node.node.getChild("URL");
+      if (urlNode) {
+        const url = cleanUrl(state.doc.sliceString(urlNode.from, urlNode.to));
         if (isOpenableUrl(url)) targets.push({ from: node.from, to: node.to, url });
-        return false;
       }
-      return undefined;
-    },
-  });
+      return false; // don't descend into the link's own URL child
+    }
+    // Images embed, they don't navigate; skip their subtree so the image URL gets no icon.
+    if (node.name === "Image") return false;
+    if (node.name === "URL") {
+      if (seen.has(node.from)) return false;
+      seen.add(node.from);
+      // Standalone URL: an autolink (<url>) or a reference-definition destination.
+      const url = cleanUrl(state.doc.sliceString(node.from, node.to));
+      if (isOpenableUrl(url)) targets.push({ from: node.from, to: node.to, url });
+      return false;
+    }
+    return undefined;
+  };
+  for (const { from, to } of ranges) syntaxTree(state).iterate({ from, to, enter });
   return targets;
 }
 
@@ -118,13 +130,13 @@ class LinkPlugin implements PluginValue {
     view: EditorView,
     private readonly open: OpenFn,
   ) {
-    this.targets = linkTargets(view.state);
+    this.targets = linkTargets(view.state, view.visibleRanges);
     this.decorations = buildDecorations(this.targets, open);
   }
 
   update(u: ViewUpdate): void {
     if (u.docChanged || u.viewportChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) {
-      this.targets = linkTargets(u.state);
+      this.targets = linkTargets(u.state, u.view.visibleRanges);
       this.decorations = buildDecorations(this.targets, this.open);
     }
   }

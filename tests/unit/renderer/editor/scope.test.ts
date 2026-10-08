@@ -1,6 +1,7 @@
 import { EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 import {
+  externalReload,
   hiddenSpans,
   scopeExtension,
   scopeField,
@@ -13,6 +14,20 @@ const doc = "line0\nline1\nline2\nline3"; // offsets: 0,6,12,18 (each line is 5 
 const make = (text = doc): EditorState => EditorState.create({ doc: text, extensions: [scopeExtension] });
 const scope = (state: EditorState, range: ScopeRange | null): EditorState =>
   state.update({ effects: setScope.of(range) }).state;
+
+describe("externalReload", () => {
+  it("lets a disk reload change hidden text that the change filter would otherwise protect", () => {
+    const scoped = scope(make(), { from: 6, to: 12 });
+    const blocked = scoped.update({ changes: { from: 0, to: 5, insert: "LINE0" } }).state;
+    expect(blocked.doc.toString()).toBe(doc); // a user edit outside the section is dropped
+    const reloaded = scoped.update({
+      changes: { from: 0, to: 5, insert: "LINE0" },
+      annotations: externalReload.of(true),
+    }).state;
+    expect(reloaded.doc.toString()).toBe("LINE0\nline1\nline2\nline3");
+    expect(reloaded.field(scopeField)).toEqual({ from: 6, to: 12 });
+  });
+});
 
 describe("hiddenSpans", () => {
   it("is empty when unscoped and omits an empty leading or trailing span", () => {

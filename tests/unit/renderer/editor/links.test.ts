@@ -35,6 +35,20 @@ describe("isOpenableUrl", () => {
 });
 
 describe("linkTargets", () => {
+  it("limits the search to the given ranges without duplicating a link seen twice", () => {
+    const doc = "[a](https://a.example)\n\nplain\n\n[b](https://b.example)";
+    const { v } = view(doc);
+    expect(linkTargets(v.state).map((t) => t.url)).toEqual(["https://a.example", "https://b.example"]);
+    expect(linkTargets(v.state, [{ from: 0, to: 5 }]).map((t) => t.url)).toEqual(["https://a.example"]);
+    expect(
+      linkTargets(v.state, [
+        { from: 0, to: 3 },
+        { from: 2, to: 6 },
+      ]).map((t) => t.url),
+    ).toEqual(["https://a.example"]);
+    expect(linkTargets(v.state, [{ from: 24, to: 29 }])).toEqual([]);
+  });
+
   it("finds a Markdown link's whole construct and its destination", () => {
     const { v } = view("see [the site](https://example.com) now");
     const targets = linkTargets(v.state);

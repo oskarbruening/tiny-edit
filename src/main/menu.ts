@@ -113,7 +113,7 @@ export function menuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] {
         { type: "separator" },
         {
           id: "close-file",
-          label: "Close File",
+          label: "Remove from Sidebar",
           accelerator: "CmdOrCtrl+W",
           click: relay({ type: "closeFile" }),
         },
@@ -158,7 +158,7 @@ export function fileContextTemplate(
   },
 ): MenuItemConstructorOptions[] {
   return [
-    { id: "ctx-remove", label: "Remove from List", click: () => deps.send({ type: "removeFile", path }) },
+    { id: "ctx-remove", label: "Remove from Sidebar", click: () => deps.send({ type: "removeFile", path }) },
     { type: "separator" },
     { id: "ctx-reveal", label: "Reveal in Finder", click: () => deps.reveal(path) },
     { id: "ctx-copy", label: "Copy Path", click: () => deps.copyPath(path) },

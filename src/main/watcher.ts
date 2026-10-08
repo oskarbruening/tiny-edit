@@ -1,4 +1,4 @@
-import { basename, dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { FileStamp } from "./files";
 import { sameStamp } from "./files";
 
@@ -68,7 +68,7 @@ export class Watcher {
   /** Re-stat everything (window focus, missed events). */
   async checkAll(): Promise<void> {
     const paths: string[] = [];
-    for (const [dir, entry] of this.dirs) for (const name of entry.files) paths.push(`${dir}/${name}`);
+    for (const [dir, entry] of this.dirs) for (const name of entry.files) paths.push(join(dir, name));
     await Promise.all(paths.map((p) => this.check(p)));
   }
 
@@ -94,7 +94,7 @@ export class Watcher {
     if (!entry) return;
     const name = filename === null ? null : filename.toString();
     const names = name === null ? [...entry.files] : entry.files.has(name) ? [name] : [];
-    for (const n of names) this.schedule(`${dir}/${n}`);
+    for (const n of names) this.schedule(join(dir, n));
   }
 
   private schedule(path: string): void {

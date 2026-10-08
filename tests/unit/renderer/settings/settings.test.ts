@@ -219,4 +219,32 @@ describe("Settings", () => {
     expect(settings.visible).toBe(false);
     expect(hooks.onClose).toHaveBeenCalledTimes(4);
   });
+
+  it("traps Tab inside the dialog: wrapping at both ends, skipping disabled controls", () => {
+    const { settings, host, q } = make();
+    settings.update(snapshot()); // auto mode: the Fixed select is disabled
+    settings.open();
+    const tab = (shift = false) =>
+      host.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: shift, cancelable: true }));
+    const done = q<HTMLButtonElement>(".settings__done");
+    const first = q<HTMLInputElement>("#settings-mode-auto");
+    // From the panel itself, Shift+Tab goes to the last control.
+    expect(tab(true)).toBe(false);
+    expect(document.activeElement).toBe(done);
+    expect(tab(false)).toBe(false); // from the last control, Tab wraps to the first
+    expect(document.activeElement).toBe(first);
+    expect(tab(true)).toBe(false); // and back
+    expect(document.activeElement).toBe(done);
+    q<HTMLSelectElement>(".settings__light").focus();
+    expect(tab(false)).toBe(true); // in the middle the browser moves focus itself
+    expect(document.activeElement).toBe(q(".settings__light"));
+    settings.update(
+      snapshot({ theme: { mode: "fixed", light: "meadow", dark: "tokyo-night", fixed: "meadow" } }),
+    );
+    done.focus();
+    tab(false);
+    expect(document.activeElement).toBe(first);
+    q<HTMLSelectElement>(".settings__fixed").focus(); // enabled now, and inside the loop
+    expect(tab(false)).toBe(true);
+  });
 });

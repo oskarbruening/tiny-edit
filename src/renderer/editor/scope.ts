@@ -1,4 +1,4 @@
-import { EditorState, StateEffect, StateField, type Extension } from "@codemirror/state";
+import { Annotation, EditorState, StateEffect, StateField, type Extension } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView } from "@codemirror/view";
 
 /** A visible character range [from, to). The rest of the document is hidden but still in the buffer. */
@@ -6,6 +6,13 @@ export type ScopeRange = { from: number; to: number };
 
 /** Narrow to a range (hide the rest) or clear the scope with `null`. */
 export const setScope = StateEffect.define<ScopeRange | null>();
+
+/**
+ * Marks a transaction that replaces the document with the disk version (external change,
+ * conflict "Reload"). It is not a user edit: autosave ignores it and the scope's change filter
+ * lets it through, since it must be allowed to touch hidden text.
+ */
+export const externalReload = Annotation.define<boolean>();
 
 /**
  * The [from, to) spans that are hidden for a scope over a document of `length`.
@@ -63,7 +70,7 @@ export const scopeExtension: Extension = [
   // visible section are allowed; anything touching the hidden text is suppressed.
   EditorState.changeFilter.of((tr) => {
     const range = tr.startState.field(scopeField);
-    if (!range) return true;
+    if (!range || tr.annotation(externalReload)) return true;
     const protect = hiddenSpans(range, tr.startState.doc.length).flat();
     return protect.length ? protect : true;
   }),

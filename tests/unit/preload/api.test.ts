@@ -42,7 +42,10 @@ describe("createApi", () => {
       channel: "shell:openExternal",
       args: ["https://example.com"],
     });
-    await expect(api.flushed()).resolves.toEqual({ channel: "renderer:flushed", args: [] });
+    await expect(api.flushed(["/a.md"])).resolves.toEqual({
+      channel: "renderer:flushed",
+      args: [{ pending: ["/a.md"] }],
+    });
     await expect(api.showFileMenu("/a.md")).resolves.toEqual({
       channel: "files:contextMenu",
       args: ["/a.md"],

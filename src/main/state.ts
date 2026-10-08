@@ -21,6 +21,8 @@ export class StateStore {
   private state: AppState = defaultState();
   private lastWritten = "";
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** Bumped by every sync flush so an async write that overlapped it can re-assert the newer text. */
+  private flushSeq = 0;
   private readonly debounceMs: number;
   private readonly now: () => Date;
   private readonly onError: (err: unknown) => void;
@@ -91,9 +93,14 @@ export class StateStore {
   private async writeNow(): Promise<void> {
     const text = this.serialize();
     if (text === this.lastWritten) return;
+    const seq = this.flushSeq;
     try {
       await writeAtomic(this.opts.fs, this.opts.filePath, text);
-      this.lastWritten = text;
+      if (this.flushSeq !== seq) {
+        // A sync flush (quit) landed while this write was in flight; its rename may have lost
+        // the race against ours, so put the flushed text back on top.
+        writeAtomicSync(this.opts.fs, this.opts.filePath, this.lastWritten);
+      } else this.lastWritten = text;
     } catch (err) {
       this.onError(err);
     }
@@ -110,6 +117,7 @@ export class StateStore {
     try {
       writeAtomicSync(this.opts.fs, this.opts.filePath, text);
       this.lastWritten = text;
+      this.flushSeq++;
     } catch (err) {
       this.onError(err);
     }

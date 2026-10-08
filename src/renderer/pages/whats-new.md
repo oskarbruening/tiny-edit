@@ -1,5 +1,16 @@
 # What's New in Tiny Edit
 
+## 0.2.1 — 2026-10-08
+
+- **Your bytes are safe.** Files that aren't UTF-8 (old Latin-1 or UTF-16 text) open read-only instead of being rewritten with � characters. Classic Mac line endings and stray carriage returns are kept exactly.
+- **No silent data loss on quit.** If a "Changed on disk" bar or a failed save is still open, quitting asks before anything is discarded.
+- **Drop onto the editor** opens the file in the sidebar; its text is no longer pasted into what you were writing.
+- **More formats.** JSON, YAML, TOML, INI, CSV, XML, HTML, CSS, common source code and extensionless text files open directly. A file that can't be opened now tells you why.
+- **Remove from Sidebar** is the one name for ⌘W and the right-click action, with Undo for a few seconds afterwards.
+- **Quieter syncing.** A file touched by Dropbox, iCloud or git without changing its content no longer reloads or shows a conflict; a real change keeps your undo history and caret.
+- **Fewer surprises.** Shortcuts that silently rewrote text (⌘/ comment, ⌥↑↓ move lines, ⌘] indent, ⌘I) are gone; Backspace deletes one character.
+- **Outline** also lists headings underlined with `===` or `---`; returning to a file restores its scroll position; Tab stays inside Settings.
+
 ## 0.2.0 — 2026-10-08
 
 - **Welcome page.** With no file selected, the editor shows a short guide to autosave, highlighting and shortcuts.

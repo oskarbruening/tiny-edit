@@ -1,13 +1,13 @@
-import { EditorSelection, EditorState, type Extension } from "@codemirror/state";
+import { EditorSelection, EditorState, Transaction, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { FileView } from "../store";
 import { editorExtensions } from "./extensions";
-import { scopeField, setScope, type ScopeRange } from "./scope";
+import { externalReload, scopeField, setScope, type ScopeRange } from "./scope";
 
 export type EditorHooks = {
   /** Caret/scroll settled (debounced) — persist it. */
   onViewChange: (path: string, view: FileView) => void;
-  /** The document changed — schedule a save. */
+  /** The document changed by the user's hand — schedule a save. Disk reloads do not count. */
   onDocChange: (path: string) => void;
 };
 
@@ -21,14 +21,36 @@ export type EditorOptions = {
   placeholder?: string;
 };
 
+export type OpenOptions = {
+  /** The file cannot be edited (its bytes are not valid UTF-8, so a write would be lossy). */
+  readOnly?: boolean;
+};
+
+/** The smallest single change turning `from` into `to`: common prefix and suffix trimmed. */
+export function minimalChange(from: string, to: string): { from: number; to: number; insert: string } | null {
+  if (from === to) return null;
+  let prefix = 0;
+  const max = Math.min(from.length, to.length);
+  while (prefix < max && from.charCodeAt(prefix) === to.charCodeAt(prefix)) prefix++;
+  let suffix = 0;
+  while (
+    suffix < max - prefix &&
+    from.charCodeAt(from.length - 1 - suffix) === to.charCodeAt(to.length - 1 - suffix)
+  )
+    suffix++;
+  return { from: prefix, to: from.length - suffix, insert: to.slice(prefix, to.length - suffix) };
+}
+
 /**
  * One EditorView, one EditorState per open file. Switching files swaps states so undo
- * history and unsaved edits survive; opening a file again reuses its state. With no file
- * open the view shows a read-only page (the welcome page, or What's New).
+ * history and unsaved edits survive; opening a file again reuses its state and scroll
+ * position. With no file open the view shows a read-only page (the welcome page, or What's New).
  */
 export class Editor {
   readonly view: EditorView;
   private readonly states = new Map<string, EditorState>();
+  /** Scroll offset of every open file, recorded when the view moves away from it. */
+  private readonly scrollTops = new Map<string, number>();
   private current: string | null = null;
   private viewTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly viewDebounceMs: number;
@@ -49,14 +71,13 @@ export class Editor {
     return this.current;
   }
 
-  /** Shows `path`. Reuses the existing state for the file when it is already open. */
-  open(path: string, text: string, saved?: FileView): void {
-    this.flushViewChange();
-    if (this.current) this.states.set(this.current, this.view.state);
-    const state = this.states.get(path) ?? this.freshState(path, text, saved);
+  /** Shows `path`. Reuses the existing state (and scroll position) for a file that is already open. */
+  open(path: string, text: string, saved?: FileView, options: OpenOptions = {}): void {
+    this.park();
+    const state = this.states.get(path) ?? this.freshState(path, text, saved, options);
+    const top = this.scrollTops.get(path) ?? saved?.scrollTop ?? 0;
     this.current = path;
     this.view.setState(state);
-    const top = this.states.has(path) ? this.view.scrollDOM.scrollTop : (saved?.scrollTop ?? 0);
     this.states.set(path, state);
     requestAnimationFrame(() => {
       this.view.scrollDOM.scrollTop = top;
@@ -64,22 +85,25 @@ export class Editor {
     });
   }
 
-  /** Replaces the document of an open file (external change) keeping the caret where it was, clamped. */
+  /**
+   * Replaces an open file's document with the disk version as one minimal change, so the
+   * caret, the scope and the undo history map through it instead of being thrown away.
+   * Not a user edit: `onDocChange` is not called and autosave stays quiet.
+   */
   replaceText(path: string, text: string): void {
     const state = path === this.current ? this.view.state : this.states.get(path);
     if (!state) return;
-    const sel = state.selection.main;
-    const next = EditorState.create({
-      doc: text,
-      selection: EditorSelection.single(Math.min(sel.anchor, text.length), Math.min(sel.head, text.length)),
-      extensions: this.extensions(path),
-    });
+    const change = minimalChange(state.doc.toString(), text);
+    if (!change) return;
+    const spec = {
+      changes: change,
+      annotations: [externalReload.of(true), Transaction.addToHistory.of(false)],
+    };
     if (path === this.current) {
       const top = this.view.scrollDOM.scrollTop;
-      this.view.setState(next);
+      this.view.dispatch(spec);
       requestAnimationFrame(() => (this.view.scrollDOM.scrollTop = top));
-    }
-    this.states.set(path, next);
+    } else this.states.set(path, state.update(spec).state);
   }
 
   /** Current text of a file, or null if it is not open. */
@@ -121,6 +145,7 @@ export class Editor {
   /** Forgets a file (removed from the list). Shows the placeholder page if it was active. */
   close(path: string): void {
     this.states.delete(path);
+    this.scrollTops.delete(path);
     if (this.current !== path) return;
     this.current = null; // so showPage does not store the closed file's state again
     this.showPage(this.opts.placeholder ?? "");
@@ -128,11 +153,10 @@ export class Editor {
 
   /**
    * Shows bundled read-only Markdown instead of a file (welcome page, What's New). The active
-   * file's state is kept, so opening it again restores its text, undo history and caret.
+   * file's state is kept, so opening it again restores its text, undo history, caret and scroll.
    */
   showPage(text: string): void {
-    this.flushViewChange();
-    if (this.current) this.states.set(this.current, this.view.state);
+    this.park();
     this.current = null;
     this.view.setState(this.pageState(text));
     this.view.scrollDOM.scrollTop = 0;
@@ -147,31 +171,43 @@ export class Editor {
     this.view.destroy();
   }
 
+  /** Persist the current file's view and remember its state and scroll before the view moves on. */
+  private park(): void {
+    this.flushViewChange();
+    if (this.current) {
+      this.states.set(this.current, this.view.state);
+      this.scrollTops.set(this.current, this.view.scrollDOM.scrollTop);
+    }
+  }
+
   /** Extensions for one file's state; the listener knows its path, so no lookup is needed. */
-  private extensions(path: string): Extension[] {
+  private extensions(path: string, options: OpenOptions): Extension[] {
     return editorExtensions([
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) this.opts.hooks.onDocChange(path);
+        const userEdit =
+          update.docChanged && !update.transactions.every((tr) => tr.annotation(externalReload));
+        if (userEdit) this.opts.hooks.onDocChange(path);
         // selectionSet is also true for CodeMirror's own focus/measure transactions; only
         // an actual change of caret or text counts as activity worth persisting.
         if (update.docChanged || !update.startState.selection.eq(update.state.selection))
           this.scheduleViewChange();
       }),
+      ...(options.readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
       ...(this.opts.extensions ?? []),
     ]);
   }
 
-  private freshState(path: string, text: string, saved?: FileView): EditorState {
+  private freshState(path: string, text: string, saved?: FileView, options: OpenOptions = {}): EditorState {
     const anchor = Math.min(saved?.anchor ?? 0, text.length);
     const head = Math.min(saved?.head ?? anchor, text.length);
     return EditorState.create({
       doc: text,
       selection: EditorSelection.single(anchor, head),
-      extensions: this.extensions(path),
+      extensions: this.extensions(path, options),
     });
   }
 
-  /** Read-only page: same highlighting, copy and link buttons as a file, but no save hooks. */
+  /** Read-only page: same highlighting, copy and link buttons as a file, but no save/view hooks. */
   private pageState(text: string): EditorState {
     return EditorState.create({
       doc: text,

@@ -48,7 +48,7 @@ export function createApi(deps: PreloadDeps): Api {
     },
     onFilesOpened: (cb) => subscribe<FilesOpened>(CHANNELS.filesOpened, cb),
     onFlushRequest: (cb) => subscribe<void>(CHANNELS.rendererFlush, () => cb()),
-    flushed: () => call(CHANNELS.rendererFlushed),
+    flushed: (pending) => call(CHANNELS.rendererFlushed, { pending }),
     onWatchChanged: (cb) => subscribe<WatchChanged>(CHANNELS.watchChanged, cb),
     onWatchMissing: (cb) => subscribe<WatchMissing>(CHANNELS.watchMissing, cb),
     showFileMenu: (path) => call(CHANNELS.filesContextMenu, path),

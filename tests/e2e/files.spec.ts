@@ -40,8 +40,14 @@ test("files flow through window.api: add, read, write with guard, conflict, crea
     );
     expect(r1.before).toContain("not in the file list");
     expect(r1.add.added).toEqual([md]);
-    expect(r1.add.rejected).toEqual([{ path: bin, reason: "binary" }]);
-    expect(r1.read).toMatchObject({ text: "# Title\nline\n", eol: "\r\n", bom: true, large: false });
+    expect(r1.add.rejected).toEqual([{ path: bin, reason: "extension" }]); // main also shows a "couldn't open" sheet
+    expect(r1.read).toMatchObject({
+      text: "# Title\nline\n",
+      eol: "\r\n",
+      bom: true,
+      large: false,
+      readOnly: false,
+    });
     expect(r1.w1.ok).toBe(true);
     expect(await readFile(md, "utf8")).toBe("\uFEFF# Title\r\nedited\r\n");
     expect(r1.created).toEqual({ ok: true, path: join(work, "fresh.md") });

@@ -4,6 +4,8 @@ import {
   boot,
   CONFLICT_MESSAGE,
   MISSING_MESSAGE,
+  READ_ONLY_MESSAGE,
+  UNDO_REMOVE_MS,
   mount,
   type App,
 } from "../../../src/renderer/app";
@@ -23,6 +25,7 @@ function fakeApi(state: AppState, contents: Record<string, string>) {
   const disk = { ...contents };
   const writes: { path: string; text: string; force: boolean }[] = [];
   let conflictNext = false;
+  let mtime = 0;
   const api = {
     getState: vi.fn(async () => state),
     patchState: vi.fn(async (patch) => (state = { ...state, ...patch })),
@@ -33,8 +36,9 @@ function fakeApi(state: AppState, contents: Record<string, string>) {
         text,
         eol: "\n",
         bom: false,
-        stamp: { mtimeMs: 1, size: text.length },
+        stamp: { mtimeMs: ++mtime, size: text.length },
         large: path.endsWith("big.md"),
+        readOnly: path.endsWith("bad.txt"),
       };
     }),
     writeFile: vi.fn(async (req: { path: string; text: string; force?: boolean }) => {
@@ -46,7 +50,7 @@ function fakeApi(state: AppState, contents: Record<string, string>) {
       disk[req.path] = req.text;
       return { ok: true as const, stamp: { mtimeMs: 2, size: req.text.length } };
     }),
-    flushed: vi.fn(async () => undefined),
+    flushed: vi.fn(async (_pending: string[]) => undefined),
     onFilesOpened: vi.fn((cb: (p: FilesOpened) => void) => {
       opened = cb;
       return () => (opened = null);
@@ -81,7 +85,14 @@ function fakeApi(state: AppState, contents: Record<string, string>) {
         : { ok: true as const, path: `${dir ?? "/Documents"}/${name}.md` },
     ),
     showFileMenu: vi.fn(async () => undefined),
-    addFiles: vi.fn(async (paths: string[]) => ({ added: paths, rejected: [] })),
+    addFiles: vi.fn(async (paths: string[]) => {
+      const fresh = paths.filter((p) => !state.files.some((f) => f.path === p));
+      state = {
+        ...state,
+        files: [...state.files, ...fresh.map((path) => ({ path, anchor: 0, head: 0, scrollTop: 0 }))],
+      };
+      return { added: paths, rejected: [] };
+    }),
     pathForFile: vi.fn((f: File) => `/dropped/${f.name}`),
     listThemes: vi.fn(async () => ({ themes: [...BUILTIN_THEMES], appearance: "light" as const })),
     onThemesChanged: vi.fn((cb: (t: Theme[]) => void) => {
@@ -339,9 +350,67 @@ describe("boot", () => {
     app.editor.view.dispatch({ changes: { from: 0, insert: "x" } });
     await app.autosave.flush();
     expect(app.notice.message).toBe("Couldn't save a");
+    expect(app.saveErrors.has("/a.md")).toBe(true);
     app.shell.noticeHost.querySelector("button")!.click();
     await vi.waitFor(() => expect(f.disk["/a.md"]).toBe("xaaa"));
+    expect(app.saveErrors.has("/a.md")).toBe(false);
+    expect(app.notice.visible).toBe(false);
     spy.mockRestore();
+  });
+
+  it("a save that fails while switching away stays visible when the file is active again, and is reported at quit", async () => {
+    const f = fakeApi(twoFiles(), { "/a.md": "aaa", "/b.md": "bbb" });
+    const app = await boot(document.createElement("div"), f.api);
+    apps.push(app);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    (f.api.writeFile as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("EACCES"));
+    app.editor.view.dispatch({ changes: { from: 0, insert: "x" } });
+    await app.openFile("/b.md"); // the flush on switch fails
+    expect(app.notice.visible).toBe(false); // b is fine
+    expect(app.saveErrors.has("/a.md")).toBe(true);
+    await app.openFile("/a.md");
+    expect(app.notice.message).toBe("Couldn't save a"); // not hidden by the switch
+    f.requestFlush(); // quit: the renderer tells main what is still unsaved
+    await vi.waitFor(() => expect(f.api.flushed).toHaveBeenCalledWith(["/a.md"]));
+    spy.mockRestore();
+  });
+
+  it("a parked conflict is reported as pending when main asks to flush for quit", async () => {
+    const f = fakeApi(twoFiles(), { "/a.md": "aaa", "/b.md": "bbb" });
+    const app = await boot(document.createElement("div"), f.api);
+    apps.push(app);
+    f.conflictOnce();
+    app.editor.view.dispatch({ changes: { from: 3, insert: "!" } });
+    await app.autosave.flush();
+    expect(app.notice.message).toBe(CONFLICT_MESSAGE);
+    f.requestFlush();
+    await vi.waitFor(() => expect(f.api.flushed).toHaveBeenCalledWith(["/a.md"]));
+    expect(f.writes).toHaveLength(1); // nothing was forced
+  });
+
+  it("a file that is not valid UTF-8 opens read-only with a notice; nothing is ever written", async () => {
+    const state = {
+      ...defaultState(),
+      files: [
+        { path: "/bad.txt", anchor: 0, head: 0, scrollTop: 0 },
+        { path: "/a.md", anchor: 0, head: 0, scrollTop: 0 },
+      ],
+      activePath: "/bad.txt",
+    };
+    const f = fakeApi(state, { "/bad.txt": "caf\uFFFD", "/a.md": "aaa" });
+    const app = await boot(document.createElement("div"), f.api);
+    apps.push(app);
+    expect(app.notice.message).toBe(READ_ONLY_MESSAGE);
+    expect(app.readOnly.has("/bad.txt")).toBe(true);
+    expect(app.editor.view.state.readOnly).toBe(true);
+    await app.openFile("/a.md");
+    expect(app.notice.visible).toBe(false);
+    expect(app.editor.view.state.readOnly).toBe(false);
+    await app.openFile("/bad.txt");
+    expect(app.notice.message).toBe(READ_ONLY_MESSAGE);
+    f.requestFlush();
+    await vi.waitFor(() => expect(f.api.flushed).toHaveBeenCalledWith([]));
+    expect(f.writes).toHaveLength(0);
   });
 
   it("reopening an already-open file keeps its buffer and re-shows the missing notice if needed", async () => {
@@ -400,7 +469,7 @@ describe("boot", () => {
       app.editor.view.dispatch({ changes: { from: 3, insert: "!" } });
       f.disk["/a.md"] = "theirs";
       f.changed("/a.md");
-      expect(app.notice.message).toBe(CONFLICT_MESSAGE);
+      await vi.waitFor(() => expect(app.notice.message).toBe(CONFLICT_MESSAGE));
       expect(app.autosave.isParked("/a.md")).toBe(true);
       await app.autosave.flush();
       expect(f.writes).toHaveLength(0);
@@ -464,9 +533,53 @@ describe("boot", () => {
       const app = await boot(document.createElement("div"), f.api);
       apps.push(app);
       app.editor.view.dispatch({ changes: { from: 0, insert: "x" } });
+      f.disk["/a.md"] = "theirs";
       f.changed("/a.md");
+      await vi.waitFor(() => expect(app.notice.message).toBe(CONFLICT_MESSAGE));
       f.gone("/a.md");
       expect(app.notice.message).toBe(CONFLICT_MESSAGE);
+    });
+
+    it("a touched file whose bytes are unchanged is neither reloaded nor a conflict", async () => {
+      const f = fakeApi(twoFiles(), { "/a.md": "aaa", "/b.md": "bbb" });
+      const app = await boot(document.createElement("div"), f.api);
+      apps.push(app);
+      app.editor.view.dispatch({ changes: { from: 3, insert: "!" } }); // dirty …
+      f.changed("/a.md"); // … and the mtime moved (a sync tool rewrote the same bytes)
+      await vi.waitFor(() => expect(f.api.readFile).toHaveBeenCalledTimes(2));
+      await new Promise((r) => setTimeout(r, 5));
+      expect(app.notice.visible).toBe(false);
+      expect(app.autosave.isParked("/a.md")).toBe(false);
+      expect(app.editor.view.state.doc.toString()).toBe("aaa!");
+      expect(app.meta.get("/a.md")?.stamp?.mtimeMs).toBe(2); // the new stamp is adopted, so the next save passes the guard
+      await app.autosave.flush();
+      expect(f.disk["/a.md"]).toBe("aaa!");
+    });
+
+    it("a real change on a clean file keeps the undo history and reports nothing to autosave", async () => {
+      const f = fakeApi(twoFiles(), { "/a.md": "aaa\nbbb", "/b.md": "bbb" });
+      const app = await boot(document.createElement("div"), f.api);
+      apps.push(app);
+      app.editor.view.dispatch({ changes: { from: 7, insert: "!" } });
+      await app.autosave.flush();
+      f.disk["/a.md"] = "AAA\nbbb!";
+      f.changed("/a.md");
+      await vi.waitFor(() => expect(app.editor.view.state.doc.toString()).toBe("AAA\nbbb!"));
+      await new Promise((r) => setTimeout(r, 400));
+      expect(f.writes).toHaveLength(1); // the reload did not trigger a save
+      expect(app.meta.get("/a.md")?.disk).toBe("AAA\nbbb!");
+    });
+
+    it("a change under a read that fails is left to the missing push", async () => {
+      const f = fakeApi(twoFiles(), { "/a.md": "aaa", "/b.md": "bbb" });
+      const app = await boot(document.createElement("div"), f.api);
+      apps.push(app);
+      delete f.disk["/a.md"];
+      f.changed("/a.md");
+      await vi.waitFor(() => expect(f.api.readFile).toHaveBeenCalledTimes(2));
+      await new Promise((r) => setTimeout(r, 5));
+      expect(app.missing.has("/a.md")).toBe(false);
+      expect(app.notice.visible).toBe(false);
     });
   });
 
@@ -582,6 +695,58 @@ describe("boot", () => {
       expect(app.editor.view.state.doc.toString()).toBe(WELCOME_PAGE); // last file closed → welcome page
       f.menu({ type: "closeFile" }); // nothing active: no-op
       await app.removeFile("/zzz.md");
+    });
+
+    it("removing a file offers Undo for a while, which puts it back where it was", async () => {
+      vi.useFakeTimers();
+      const three = (): AppState => ({
+        ...defaultState(),
+        files: [
+          { path: "/a.md", anchor: 0, head: 0, scrollTop: 0 },
+          { path: "/b.md", anchor: 0, head: 0, scrollTop: 0 },
+          { path: "/c.md", anchor: 0, head: 0, scrollTop: 0 },
+        ],
+        activePath: "/b.md",
+      });
+      const f = fakeApi(three(), { "/a.md": "a", "/b.md": "b", "/c.md": "c" });
+      const app = await boot(document.createElement("div"), f.api);
+      apps.push(app);
+      await app.removeFile("/b.md");
+      expect(app.editor.currentPath).toBe("/c.md");
+      expect(app.notice.message).toBe("Removed b from the sidebar");
+      const undo = app.shell.noticeHost.querySelector("button")!;
+      expect(undo.textContent).toBe("Undo");
+      f.changed("/c.md"); // status refreshes do not steal the bar while Undo is offered
+      await vi.advanceTimersByTimeAsync(10);
+      expect(app.notice.message).toBe("Removed b from the sidebar");
+      undo.click();
+      await vi.waitFor(() =>
+        expect(app.store.get().files.map((x) => x.path)).toEqual(["/a.md", "/b.md", "/c.md"]),
+      );
+      expect(f.api.addFiles).toHaveBeenCalledWith(["/b.md"]);
+      expect(app.notice.visible).toBe(false);
+
+      await app.removeFile("/c.md"); // last entry: Undo appends at the end
+      expect(app.notice.message).toBe("Removed c from the sidebar");
+      app.shell.noticeHost.querySelector("button")!.click();
+      await vi.waitFor(() =>
+        expect(app.store.get().files.map((x) => x.path)).toEqual(["/a.md", "/b.md", "/c.md"]),
+      );
+
+      await app.removeFile("/a.md"); // let the offer expire instead
+      await vi.advanceTimersByTimeAsync(UNDO_REMOVE_MS);
+      expect(app.notice.visible).toBe(false);
+      expect(app.store.get().files.map((x) => x.path)).toEqual(["/b.md", "/c.md"]);
+
+      (f.api.addFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        added: [],
+        rejected: [{ path: "/b.md", reason: "missing" }],
+      });
+      await app.removeFile("/b.md");
+      app.shell.noticeHost.querySelector("button")!.click(); // the file vanished meanwhile: nothing to restore
+      await vi.advanceTimersByTimeAsync(10);
+      expect(app.store.get().files.map((x) => x.path)).toEqual(["/c.md"]);
+      vi.useRealTimers();
     });
 
     it("context-menu removeFile on a background file keeps the active one; previous neighbour used at the end", async () => {

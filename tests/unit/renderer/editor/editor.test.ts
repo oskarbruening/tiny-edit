@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Editor } from "../../../../src/renderer/editor/editor";
+import { undo, undoDepth } from "@codemirror/commands";
+import { Editor, minimalChange } from "../../../../src/renderer/editor/editor";
 
 function make(debounce = 10) {
   const host = document.createElement("div");
@@ -88,18 +89,81 @@ describe("Editor", () => {
     expect(hooks.onViewChange).toHaveBeenLastCalledWith("/b.md", expect.objectContaining({ anchor: 0 }));
   });
 
-  it("replaceText swaps the document keeping a clamped caret, for active and background files", () => {
-    const { editor } = make();
+  it("replaceText applies the disk text as one minimal change: caret, scope and undo history map through it", () => {
+    const { editor, hooks } = make();
     editors.push(editor);
-    editor.open("/a.md", "0123456789", { anchor: 8, head: 8, scrollTop: 0 });
-    editor.replaceText("/a.md", "abc");
-    expect(editor.view.state.doc.toString()).toBe("abc");
-    expect(editor.view.state.selection.main.head).toBe(3);
+    editor.open("/a.md", "one\ntwo\nthree", { anchor: 9, head: 9, scrollTop: 0 }); // caret in "three"
+    editor.view.dispatch({ changes: { from: 13, insert: "!" } }); // a user edit → undo history
+    expect(undoDepth(editor.view.state)).toBe(1);
+    hooks.onDocChange.mockClear();
+    editor.applyScope("/a.md", { from: 8, to: 14 });
+    editor.view.dispatch({ selection: { anchor: 10 } });
+
+    editor.replaceText("/a.md", "ONE\ntwo\nthree!"); // the first line changed on disk
+    expect(editor.view.state.doc.toString()).toBe("ONE\ntwo\nthree!");
+    expect(editor.view.state.selection.main.head).toBe(10); // same text, same place
+    expect(editor.scopeOf("/a.md")).toEqual({ from: 8, to: 14 }); // the hidden head was changed; scope survived
+    expect(undoDepth(editor.view.state)).toBe(1); // history kept …
+    expect(hooks.onDocChange).not.toHaveBeenCalled(); // … and autosave not told
+    undo(editor.view);
+    expect(editor.view.state.doc.toString()).toBe("ONE\ntwo\nthree"); // … and still undoes the user's edit
+    expect(hooks.onDocChange).toHaveBeenCalledTimes(1); // undo is the user's own edit
+    hooks.onDocChange.mockClear();
+
+    editor.replaceText("/a.md", editor.text("/a.md")!); // identical text: nothing happens
+    expect(hooks.onDocChange).not.toHaveBeenCalled();
+
     editor.open("/b.md", "b");
     editor.replaceText("/a.md", "zz");
     expect(editor.text("/a.md")).toBe("zz");
     editor.replaceText("/unknown.md", "ignored");
     expect(editor.text("/unknown.md")).toBeNull();
+  });
+
+  it("minimalChange trims the common prefix and suffix", () => {
+    expect(minimalChange("abc", "abc")).toBeNull();
+    expect(minimalChange("hello world", "hello there world")).toEqual({ from: 6, to: 6, insert: "there " });
+    expect(minimalChange("aXb", "ab")).toEqual({ from: 1, to: 2, insert: "" });
+    expect(minimalChange("aa", "aaa")).toEqual({ from: 2, to: 2, insert: "a" });
+    expect(minimalChange("", "x")).toEqual({ from: 0, to: 0, insert: "x" });
+    expect(minimalChange("x", "")).toEqual({ from: 0, to: 1, insert: "" });
+  });
+
+  it("restores each open file's own scroll position when switching back, and after a page", () => {
+    const { editor } = make();
+    editors.push(editor);
+    editor.open("/a.md", "a\n".repeat(200), { anchor: 0, head: 0, scrollTop: 0 });
+    editor.view.scrollDOM.scrollTop = 120;
+    editor.open("/b.md", "b\n".repeat(200), { anchor: 0, head: 0, scrollTop: 40 });
+    const tops: number[] = [];
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      cb(0);
+      tops.push(editor.view.scrollDOM.scrollTop);
+      return 1;
+    });
+    editor.open("/a.md", "stale"); // already open → its own last scroll offset, not the saved one
+    expect(tops.at(-1)).toBe(120);
+    editor.view.scrollDOM.scrollTop = 77;
+    editor.showPage("# page");
+    editor.open("/a.md", "stale");
+    expect(tops.at(-1)).toBe(77);
+    editor.open("/b.md", "stale"); // b was parked at whatever the scroller held when we left it
+    editor.open("/c.md", "fresh", { anchor: 0, head: 0, scrollTop: 33 }); // never open → the saved offset
+    expect(tops.at(-1)).toBe(33);
+    raf.mockRestore();
+  });
+
+  it("opens a file read-only when asked: no typing, no doc-change hook, still navigable", () => {
+    const { editor, hooks } = make();
+    editors.push(editor);
+    editor.open("/bad.txt", "caf\uFFFD", undefined, { readOnly: true });
+    expect(editor.view.state.readOnly).toBe(true);
+    expect(editor.view.contentDOM.getAttribute("contenteditable")).toBe("false");
+    editor.view.dispatch(editor.view.state.replaceSelection("x")); // commands refuse; a raw dispatch still goes through
+    expect(hooks.onDocChange).toHaveBeenCalledTimes(1);
+    editor.open("/ok.md", "fine");
+    expect(editor.view.state.readOnly).toBe(false);
+    expect(editor.view.contentDOM.getAttribute("contenteditable")).toBe("true");
   });
 
   it("close forgets a file and blanks the view when it was active", () => {

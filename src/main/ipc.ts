@@ -2,7 +2,7 @@ import type { IpcMainInvokeEvent } from "electron";
 import { isAbsolute } from "node:path";
 import { CHANNELS, type Channel, type MenuAction, type ThemesList } from "../shared/ipc";
 import { parsePatch, type AppState } from "../shared/state";
-import type { Files, WriteRequest } from "./files";
+import type { Files, Rejection, WriteRequest } from "./files";
 import type { StateStore } from "./state";
 
 export type IpcMainLike = {
@@ -17,8 +17,10 @@ export type IpcDeps = {
   clipboard: { writeText(text: string): void };
   /** Only our own renderer may call. Default accepts everything (unit tests inject a checker). */
   isTrustedSender?: (event: IpcMainInvokeEvent) => boolean;
-  /** Receives renderer:flushed acks (see FlushGate). */
-  onRendererFlushed?: (senderId: number) => void;
+  /** Receives renderer:flushed acks with the paths still unsaved (see FlushGate). */
+  onRendererFlushed?: (senderId: number, pending: string[]) => void;
+  /** Paths a drop / Open… refused; main shows the "couldn't open" dialog. */
+  onRejected?: (rejected: Rejection[]) => void;
   /** The stamp the renderer now holds for a file (after read/write); the watcher ignores it. */
   onFileStamp?: (path: string, stamp: { mtimeMs: number; size: number }) => void;
   /** Shows the native context menu for a listed file (Menu.buildFromTemplate + popup). */
@@ -119,6 +121,7 @@ export function registerIpc(deps: IpcDeps): void {
       throw new IpcError("files:add: expected an array of paths");
     const result = await files.accept(raw.filter((p): p is string => typeof p === "string"));
     appendFiles(event, result.added);
+    if (result.rejected.length) deps.onRejected?.(result.rejected);
     return result;
   });
 
@@ -148,8 +151,10 @@ export function registerIpc(deps: IpcDeps): void {
     void shell.openExternal(raw);
   });
 
-  guard(CHANNELS.rendererFlushed, (event) => {
-    deps.onRendererFlushed?.(event.sender.id);
+  guard(CHANNELS.rendererFlushed, (event, raw) => {
+    const list = isRecord(raw) && Array.isArray(raw["pending"]) ? raw["pending"] : [];
+    const pending = list.filter((p): p is string => typeof p === "string");
+    deps.onRendererFlushed?.(event.sender.id, pending);
   });
 
   guard(CHANNELS.filesContextMenu, (event, raw) => {
@@ -171,15 +176,22 @@ export function registerIpc(deps: IpcDeps): void {
     if (picked.length === 0) return;
     const result = await files.accept(picked);
     appendFiles(event, result.added);
+    if (result.rejected.length) deps.onRejected?.(result.rejected);
   });
 }
 
 /** Shared by Open…, Finder/Dock opens and drops that bypass the renderer: accept, append, notify. */
 export async function openPaths(
   paths: readonly string[],
-  deps: { files: Files; store: StateStore; send: (channel: string, payload: unknown) => void },
+  deps: {
+    files: Files;
+    store: StateStore;
+    send: (channel: string, payload: unknown) => void;
+    onRejected?: (rejected: Rejection[]) => void;
+  },
 ): Promise<void> {
   const result = await deps.files.accept(paths);
+  if (result.rejected.length) deps.onRejected?.(result.rejected);
   if (result.added.length === 0) return;
   const current = deps.store.get().files;
   const known = new Set(current.map((f) => f.path));

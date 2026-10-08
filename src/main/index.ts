@@ -24,7 +24,7 @@ import { UserThemes } from "./themes";
 import { BUILTIN_THEMES, resolveTheme, type Appearance } from "../shared/themes";
 import { displayName } from "../shared/text";
 import { APP_NAME } from "../shared/constants";
-import { Files } from "./files";
+import { describeRejections, Files, type Rejection } from "./files";
 import { FlushGate, guardClose } from "./flushGate";
 import { Watcher } from "./watcher";
 import { CHANNELS } from "../shared/ipc";
@@ -113,6 +113,14 @@ if (!app.requestSingleInstanceLock()) {
       return result.canceled ? [] : result.filePaths;
     };
     const sendMenuAction = (action: unknown): void => send(CHANNELS.menuAction, action);
+    /** Dropped / opened paths the app refused: say so instead of silently ignoring them. */
+    const reportRejected = (rejected: Rejection[]): void => {
+      const { message, detail } = describeRejections(rejected);
+      const [win] = BrowserWindow.getAllWindows();
+      const options = { type: "warning" as const, message, detail, buttons: ["OK"] };
+      void (win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options));
+    };
+    const openDeps = { files, store, send, onRejected: reportRejected };
     registerIpc({
       ipcMain,
       store,
@@ -120,7 +128,8 @@ if (!app.requestSingleInstanceLock()) {
       shell,
       clipboard,
       isTrustedSender: trustedSenderFor(devUrl ? [RENDERER_ORIGIN, devUrl] : [RENDERER_ORIGIN]),
-      onRendererFlushed: (id) => flushGate.notify(id),
+      onRendererFlushed: (id, pending) => flushGate.notify(id, pending),
+      onRejected: reportRejected,
       onFileStamp: (path, stamp) => watcher.recordStamp(path, stamp),
       showContextMenu: (path, relay) => {
         const template = fileContextTemplate(path, {
@@ -140,7 +149,7 @@ if (!app.requestSingleInstanceLock()) {
         Menu.buildFromTemplate(
           menuTemplate({
             send: sendMenuAction,
-            openDialog: () => void pickFiles().then((paths) => openPaths(paths, { files, store, send })),
+            openDialog: () => void pickFiles().then((paths) => openPaths(paths, openDeps)),
             isDev: !app.isPackaged,
             themes: allThemes(),
             themeState: store.get().theme,
@@ -172,7 +181,22 @@ if (!app.requestSingleInstanceLock()) {
       applyBackground();
     });
     trackWindowState(win, { onChange: (bounds) => store.patch({ window: bounds }) });
-    guardClose(win, flushGate, () => store.flush());
+    /** Quit with unsaved edits (a conflict bar still open, a failed save, a frozen renderer): ask first. */
+    const confirmDiscard = async (unsaved: string[] | null): Promise<boolean> => {
+      const names = unsaved?.map((p) => displayName(p)).join(", ");
+      const { response } = await dialog.showMessageBox(win, {
+        type: "warning",
+        buttons: ["Cancel", "Quit Anyway"],
+        defaultId: 0,
+        cancelId: 0,
+        message: unsaved ? `Changes to ${names} could not be saved` : "The editor is not responding",
+        detail: unsaved
+          ? "Quitting now discards those changes. Cancel to resolve the notice above the editor (Reload / Keep mine, or Retry) and quit again."
+          : "Unsaved changes may be lost if you quit now.",
+      });
+      return response === 1;
+    };
+    guardClose(win, flushGate, () => store.flush(), confirmDiscard);
     win.on("focus", () => void watcher.checkAll());
     win.on("closed", () => {
       watcher.close();
@@ -187,7 +211,7 @@ if (!app.requestSingleInstanceLock()) {
     reflectTitle(state.activePath);
     store.subscribe((s) => reflectTitle(s.activePath));
 
-    openQueue.attach((paths) => void openPaths(paths, { files, store, send }));
+    openQueue.attach((paths) => void openPaths(paths, openDeps));
   });
 
   app.on("before-quit", () => store.flush());

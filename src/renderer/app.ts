@@ -1,6 +1,12 @@
 import { openSearchPanel } from "@codemirror/search";
 import type { Api, MenuAction } from "../shared/ipc";
-import { DEFAULT_FONT_SIZE, FONT_SIZE_RANGE, SIDEBAR_WIDTH_RANGE, type AppState } from "../shared/state";
+import {
+  DEFAULT_FONT_SIZE,
+  FONT_SIZE_RANGE,
+  SIDEBAR_WIDTH_RANGE,
+  type AppState,
+  type FileState,
+} from "../shared/state";
 import { displayName, parentDir } from "../shared/text";
 import { resolveTheme, type Appearance, type Theme } from "../shared/themes";
 import { parseToc, type Heading } from "../shared/toc";
@@ -73,6 +79,10 @@ export type App = {
   autosave: Autosave;
   meta: Map<string, FileMeta>;
   missing: Set<string>;
+  /** Files whose last save failed (shown with a Retry notice while active; reported on quit). */
+  saveErrors: Set<string>;
+  /** Files opened read-only because their bytes are not valid UTF-8. */
+  readOnly: Set<string>;
   /** Cached H1/H2 outline per loaded file, driving the sidebar chevrons and section scoping. */
   tocs: Map<string, Heading[]>;
   openFile: (path: string, scope?: ScopeRange | null) => Promise<void>;
@@ -91,6 +101,10 @@ export type App = {
 
 export const MISSING_MESSAGE = "File not found — typing will recreate it";
 export const CONFLICT_MESSAGE = "Changed on disk";
+export const READ_ONLY_MESSAGE = "Not valid UTF-8 text — opened read-only so nothing gets rewritten";
+export const LARGE_MESSAGE = "Large file — highlighting may be slower";
+/** How long the "Removed … · Undo" notice stays before the status notice takes the bar back. */
+export const UNDO_REMOVE_MS = 8000;
 
 export type BootOptions = { win?: Pick<Window, "addEventListener" | "removeEventListener">; doc?: Document };
 
@@ -128,9 +142,14 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
   const missing = new Set<string>();
   /** Files whose disk copy changed while they had unsaved edits; the bar shows when they are active. */
   const conflicts = new Set<string>();
+  const saveErrors = new Set<string>();
+  const readOnly = new Set<string>();
+  const large = new Set<string>();
   const meta = new Map<string, FileMeta>();
   const tocs = new Map<string, Heading[]>();
   const tocTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** While set, the notice bar shows a transient message (Undo) instead of the file's status. */
+  let transientTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Recompute a loaded file's outline from its current buffer (or forget it when unloaded). */
   function refreshToc(path: string): void {
@@ -173,40 +192,75 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     text: (path) => editor.text(path),
     meta,
     onSaved: (path) => {
-      if (missing.delete(path)) {
-        if (path === editor.currentPath && notice.message === MISSING_MESSAGE) notice.hide();
+      const changed = missing.delete(path) || saveErrors.delete(path);
+      if (changed) {
+        refreshNotice();
         render();
       }
     },
-    onConflict: (path) => showConflict(path),
+    onConflict: (path) => {
+      conflicts.add(path);
+      refreshNotice();
+    },
     onError: (path, err) => {
       console.error("[autosave]", path, err);
-      if (path === editor.currentPath)
-        notice.show(`Couldn't save ${displayName(path)}`, [
-          { label: "Retry", onClick: () => void autosave.flush(path) },
-        ]);
+      saveErrors.add(path);
+      refreshNotice();
     },
   });
 
-  function showConflict(path: string): void {
-    conflicts.add(path);
-    if (path !== editor.currentPath) return;
-    notice.show(CONFLICT_MESSAGE, [
-      {
-        label: "Reload",
-        onClick: () => {
-          conflicts.delete(path);
-          void autosave.resolve(path, "reload").then(() => reloadFile(path));
+  /**
+   * The notice bar always reflects the active file's status, by priority: conflict, missing,
+   * failed save, read-only, large. Nothing active → hidden. A transient notice (Undo) holds
+   * the bar until it expires.
+   */
+  function refreshNotice(): void {
+    if (transientTimer) return;
+    const path = editor.currentPath;
+    if (!path) {
+      notice.hide();
+      return;
+    }
+    if (conflicts.has(path)) {
+      notice.show(CONFLICT_MESSAGE, [
+        {
+          label: "Reload",
+          onClick: () => {
+            conflicts.delete(path);
+            void autosave.resolve(path, "reload").then(() => reloadFile(path));
+          },
         },
-      },
-      {
-        label: "Keep mine",
-        onClick: () => {
-          conflicts.delete(path);
-          void autosave.resolve(path, "keep-mine").then(() => notice.hide());
+        {
+          label: "Keep mine",
+          onClick: () => {
+            conflicts.delete(path);
+            void autosave.resolve(path, "keep-mine").then(() => refreshNotice());
+          },
         },
-      },
-    ]);
+      ]);
+    } else if (missing.has(path)) notice.show(MISSING_MESSAGE);
+    else if (saveErrors.has(path))
+      notice.show(`Couldn't save ${displayName(path)}`, [
+        { label: "Retry", onClick: () => void autosave.flush(path) },
+      ]);
+    else if (readOnly.has(path)) notice.show(READ_ONLY_MESSAGE);
+    else if (large.has(path)) notice.show(LARGE_MESSAGE);
+    else notice.hide();
+  }
+
+  function showTransient(message: string, actions: { label: string; onClick: () => void }[]): void {
+    clearTransient();
+    notice.show(message, actions);
+    transientTimer = setTimeout(() => {
+      transientTimer = null;
+      refreshNotice();
+    }, UNDO_REMOVE_MS);
+  }
+
+  function clearTransient(): void {
+    if (!transientTimer) return;
+    clearTimeout(transientTimer);
+    transientTimer = null;
   }
 
   const sidebar = new Sidebar(shell.list, {
@@ -245,15 +299,22 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     sidebar.render(s.files, s.activePath, missing, tocs, scope);
   };
 
-  async function load(path: string): Promise<{ text: string; large: boolean } | null> {
+  type Loaded = { text: string; large: boolean; readOnly: boolean };
+
+  /** Reads a file and records what we now know about it; null when it is not on disk. */
+  async function load(path: string): Promise<Loaded | null> {
     try {
       const read = await api.readFile(path);
-      meta.set(path, { eol: read.eol, bom: read.bom, stamp: read.stamp });
+      meta.set(path, { eol: read.eol, bom: read.bom, stamp: read.stamp, disk: read.text });
       missing.delete(path);
-      return { text: read.text, large: read.large };
+      if (read.readOnly) readOnly.add(path);
+      else readOnly.delete(path);
+      if (read.large) large.add(path);
+      else large.delete(path);
+      return { text: read.text, large: read.large, readOnly: read.readOnly };
     } catch {
       missing.add(path);
-      if (!meta.has(path)) meta.set(path, { eol: "\n", bom: false, stamp: null });
+      if (!meta.has(path)) meta.set(path, { eol: "\n", bom: false, stamp: null, disk: null });
       return null;
     }
   }
@@ -265,19 +326,15 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     if (editor.currentPath && editor.currentPath !== path) await autosave.flush(editor.currentPath);
     store.setActive(path);
     render();
-    notice.hide();
     if (editor.isOpen(path)) {
       editor.open(path, editor.text(path) ?? "", file);
-      if (conflicts.has(path)) showConflict(path);
-      else if (missing.has(path)) notice.show(MISSING_MESSAGE);
     } else {
       const loaded = await load(path);
-      editor.open(path, loaded?.text ?? "", file);
-      if (!loaded) notice.show(MISSING_MESSAGE);
-      else if (loaded.large) notice.show("Large file — highlighting may be slower");
+      editor.open(path, loaded?.text ?? "", file, { readOnly: loaded?.readOnly === true });
     }
     refreshToc(path);
     editor.applyScope(path, scope);
+    refreshNotice();
     render();
   }
 
@@ -286,13 +343,14 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     if (loaded) {
       editor.replaceText(path, loaded.text);
       refreshToc(path);
-      if (path === editor.currentPath) notice.hide();
-    } else if (path === editor.currentPath) notice.show(MISSING_MESSAGE);
+    }
+    refreshNotice();
     render();
   }
 
   async function removeFile(path: string): Promise<void> {
-    if (!store.fileState(path)) return;
+    const file = store.fileState(path);
+    if (!file) return;
     await autosave.flush(path);
     const wasActive = editor.currentPath === path;
     const files = store.get().files;
@@ -303,19 +361,41 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     autosave.forget(path);
     missing.delete(path);
     conflicts.delete(path);
+    saveErrors.delete(path);
+    readOnly.delete(path);
+    large.delete(path);
     meta.delete(path);
     tocs.delete(path);
-    notice.hide();
+    refreshNotice();
     render();
     if (wasActive && neighbour) await openFile(neighbour.path);
+    showTransient(`Removed ${displayName(path)} from the sidebar`, [
+      { label: "Undo", onClick: () => void restoreFile(path, index) },
+    ]);
+  }
+
+  /** Undo of a removal: add the file back and put it where it was. */
+  async function restoreFile(path: string, index: number): Promise<void> {
+    clearTransient();
+    refreshNotice();
+    const result = await api.addFiles([path]);
+    if (!result.added.includes(path)) return;
+    const current = (await api.getState()).files;
+    const moving = current.find((f) => f.path === path);
+    if (!moving) return;
+    const rest = current.filter((f) => f.path !== path);
+    const at = Math.min(index, rest.length);
+    const files: FileState[] = [...rest.slice(0, at), moving, ...rest.slice(at)];
+    store.patch({ files });
+    render();
   }
 
   async function showPage(text: string): Promise<void> {
     const active = editor.currentPath;
     if (active) await autosave.flush(active);
     store.setActive(null);
-    notice.hide();
     editor.showPage(text);
+    refreshNotice();
     render();
   }
 
@@ -403,22 +483,45 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     if (first && store.fileState(first)) await openFile(first);
   });
   const unsubscribeFlush = api.onFlushRequest(() => {
-    autosave.flush().finally(() => void api.flushed());
+    autosave.flush().finally(() => void api.flushed(autosave.pendingPaths()));
   });
   const unsubscribeMenu = api.onMenuAction((action) => handleMenuAction(action));
-  const unsubscribeChanged = api.onWatchChanged(({ path }) => {
+  const unsubscribeChanged = api.onWatchChanged(async ({ path }) => {
     if (!store.fileState(path) || !editor.isOpen(path)) return; // not loaded yet: the next open reads fresh
-    if (autosave.isDirty(path)) {
+    const before = meta.get(path);
+    const dirty = autosave.isDirty(path);
+    // Read first: a touched mtime with the same bytes (sync tools, git) is not a change at all.
+    let read: Awaited<ReturnType<Api["readFile"]>>;
+    try {
+      read = await api.readFile(path);
+    } catch {
+      return; // gone: watch:missing follows
+    }
+    if (before && read.text === before.disk) {
+      meta.set(path, { ...before, stamp: read.stamp });
+      return;
+    }
+    if (dirty) {
       autosave.park(path);
-      showConflict(path);
-    } else void reloadFile(path);
+      conflicts.add(path);
+      refreshNotice();
+      return;
+    }
+    meta.set(path, { eol: read.eol, bom: read.bom, stamp: read.stamp, disk: read.text });
+    missing.delete(path);
+    if (read.readOnly) readOnly.add(path);
+    else readOnly.delete(path);
+    editor.replaceText(path, read.text);
+    refreshToc(path);
+    refreshNotice();
+    render();
   });
   const unsubscribeMissing = api.onWatchMissing(({ path }) => {
     if (!store.fileState(path)) return;
     missing.add(path);
     const m = meta.get(path);
     if (m) meta.set(path, { ...m, stamp: null });
-    if (path === editor.currentPath && !conflicts.has(path)) notice.show(MISSING_MESSAGE);
+    refreshNotice();
     render();
   });
 
@@ -435,6 +538,8 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     autosave,
     meta,
     missing,
+    saveErrors,
+    readOnly,
     tocs,
     openFile,
     reloadFile,
@@ -454,6 +559,7 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
       unsubscribeAppearance();
       uninstallDrop();
       uninstallDivider();
+      clearTransient();
       for (const timer of tocTimers.values()) clearTimeout(timer);
       win.removeEventListener("blur", flushAll);
       doc.removeEventListener("visibilitychange", onVisibility);

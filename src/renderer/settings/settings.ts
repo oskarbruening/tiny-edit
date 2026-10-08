@@ -48,7 +48,7 @@ export class Settings {
       if (e.key === "Escape") {
         e.preventDefault();
         this.close();
-      }
+      } else if (e.key === "Tab") this.trapTab(e);
     });
 
     this.panel = el("section", "settings__panel");
@@ -153,6 +153,24 @@ export class Settings {
     this.panel.focus();
   }
 
+  /** The dialog is modal: Tab and Shift+Tab cycle inside it instead of reaching the editor behind. */
+  private trapTab(e: KeyboardEvent): void {
+    const focusable = [...this.panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+      (n) => !(n as HTMLInputElement).disabled,
+    );
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) return;
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === this.panel)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
   close(): void {
     if (this.host.hidden) return;
     this.host.hidden = true;
@@ -169,6 +187,7 @@ export class Settings {
   }
 }
 
+const FOCUSABLE = "input, select, button, [tabindex]:not([tabindex='-1'])";
 const byAppearance = (appearance: Appearance) => (t: Theme) => t.appearance === appearance;
 
 /** Same wording as the View → Theme menu. */

@@ -1,7 +1,7 @@
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { describe, expect, it } from "vitest";
-import { editorExtensions } from "../../../../src/renderer/editor/extensions";
+import { editingKeymap, editorExtensions } from "../../../../src/renderer/editor/extensions";
 
 function view(doc: string, pos = doc.length) {
   const parent = document.createElement("div");
@@ -42,6 +42,61 @@ describe("editorExtensions", () => {
     expect(v.state.doc.toString()).toBe("a  ");
     press(v, "Tab", { shiftKey: true });
     expect(v.state.doc.toString()).toBe("a  ");
+    v.destroy();
+  });
+
+  it("Backspace removes exactly one character, even inside indentation", () => {
+    const v = view("    x", 4); // caret after four spaces
+    press(v, "Backspace");
+    expect(v.state.doc.toString()).toBe("   x");
+    v.destroy();
+  });
+
+  it("carries no undocumented editing shortcuts: no comment toggle, line move, line copy or indent keys", () => {
+    const keys = new Set(editingKeymap.map((b) => b.key));
+    for (const k of [
+      "Mod-/",
+      "Alt-ArrowUp",
+      "Alt-ArrowDown",
+      "Shift-Alt-ArrowUp",
+      "Mod-]",
+      "Mod-[",
+      "Mod-Enter",
+      "Mod-i",
+      "Shift-Mod-k",
+      "Mod-Alt-\\",
+      "Alt-A",
+    ])
+      expect(keys.has(k)).toBe(false);
+    const v = view("a\nb", 0);
+    press(v, "/", { metaKey: true });
+    press(v, "ArrowDown", { altKey: true });
+    press(v, "]", { metaKey: true });
+    press(v, "Enter", { metaKey: true });
+    expect(v.state.doc.toString()).toBe("a\nb");
+    v.destroy();
+  });
+
+  it("splits lines on LF only, so a stray CR stays in the text and a CR-only file is one line", () => {
+    const v = view("a\rb\nc");
+    expect(v.state.doc.lines).toBe(2);
+    expect(v.state.doc.toString()).toBe("a\rb\nc");
+    expect(v.contentDOM.querySelector(".cm-specialChar")).not.toBeNull(); // the CR is visible, not lost
+    v.destroy();
+  });
+
+  it("leaves a dropped file alone: the window opens it, the editor must not paste its contents", () => {
+    const v = view("keep me");
+    const drop = new Event("drop", { bubbles: true, cancelable: true }) as DragEvent;
+    Object.defineProperty(drop, "dataTransfer", {
+      value: { files: [new File(["pasted?"], "x.md")], getData: () => "", types: ["Files"] },
+    });
+    v.contentDOM.dispatchEvent(drop);
+    expect(v.state.doc.toString()).toBe("keep me");
+    const textDrop = new Event("drop", { bubbles: true, cancelable: true }) as DragEvent;
+    Object.defineProperty(textDrop, "dataTransfer", { value: { files: [], getData: () => "", types: [] } });
+    v.contentDOM.dispatchEvent(textDrop); // a plain text drag still reaches CodeMirror (no files → not ours)
+    expect(v.state.doc.toString()).toBe("keep me");
     v.destroy();
   });
 

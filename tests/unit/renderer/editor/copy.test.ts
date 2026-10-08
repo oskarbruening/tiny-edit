@@ -185,3 +185,25 @@ describe("block hover reveal", () => {
     expect(() => instance.onHover({ target: detached } as unknown as Event, v)).not.toThrow();
   });
 });
+
+describe("buildCopy with ranges", () => {
+  it("builds buttons only for code touching the given ranges", () => {
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const doc = "`one`\n\nplain\n\n`two`\n";
+    const v = new EditorView({ parent, state: EditorState.create({ doc, extensions: editorExtensions() }) });
+    try {
+      expect(buildCopy(v.state, () => undefined).decorations.size).toBe(2);
+      expect(buildCopy(v.state, () => undefined, [{ from: 0, to: 5 }]).decorations.size).toBe(1);
+      expect(buildCopy(v.state, () => undefined, [{ from: 7, to: 12 }]).decorations.size).toBe(0);
+      expect(
+        buildCopy(v.state, () => undefined, [
+          { from: 0, to: 2 },
+          { from: 3, to: 5 },
+        ]).decorations.size,
+      ).toBe(1); // overlapping ranges do not duplicate
+    } finally {
+      v.destroy();
+    }
+  });
+});
