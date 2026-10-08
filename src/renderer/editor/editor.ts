@@ -2,6 +2,7 @@ import { EditorSelection, EditorState, Transaction, type Extension } from "@code
 import { EditorView } from "@codemirror/view";
 import type { FileView } from "../store";
 import { editorExtensions } from "./extensions";
+import { topLanguage } from "./languages";
 import { externalReload, scopeField, setScope, type ScopeRange } from "./scope";
 
 export type EditorHooks = {
@@ -106,6 +107,23 @@ export class Editor {
     } else this.states.set(path, state.update(spec).state);
   }
 
+  /**
+   * Replaces the active file's whole document with its pretty-formatted text (Edit → Pretty
+   * Format). Unlike `replaceText`, this is a real user edit: it goes on the undo history (Cmd+Z
+   * reverts it) and triggers autosave. Any section scope is cleared first so the whole file is
+   * written, since the formatter reflows the entire document. Returns false when `path` is not
+   * active or the text is already formatted (nothing to do).
+   */
+  formatDocument(path: string, text: string): boolean {
+    if (path !== this.current) return false;
+    // A narrowed section would block a full-document edit (scope's change filter), so clear it first.
+    if (this.view.state.field(scopeField, false)) this.view.dispatch({ effects: setScope.of(null) });
+    const change = minimalChange(this.view.state.doc.toString(), text);
+    if (!change) return false;
+    this.view.dispatch({ changes: change, scrollIntoView: true });
+    return true;
+  }
+
   /** Current text of a file, or null if it is not open. */
   text(path: string): string | null {
     if (path === this.current) return this.view.state.doc.toString();
@@ -182,19 +200,22 @@ export class Editor {
 
   /** Extensions for one file's state; the listener knows its path, so no lookup is needed. */
   private extensions(path: string, options: OpenOptions): Extension[] {
-    return editorExtensions([
-      EditorView.updateListener.of((update) => {
-        const userEdit =
-          update.docChanged && !update.transactions.every((tr) => tr.annotation(externalReload));
-        if (userEdit) this.opts.hooks.onDocChange(path);
-        // selectionSet is also true for CodeMirror's own focus/measure transactions; only
-        // an actual change of caret or text counts as activity worth persisting.
-        if (update.docChanged || !update.startState.selection.eq(update.state.selection))
-          this.scheduleViewChange();
-      }),
-      ...(options.readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
-      ...(this.opts.extensions ?? []),
-    ]);
+    return editorExtensions(
+      [
+        EditorView.updateListener.of((update) => {
+          const userEdit =
+            update.docChanged && !update.transactions.every((tr) => tr.annotation(externalReload));
+          if (userEdit) this.opts.hooks.onDocChange(path);
+          // selectionSet is also true for CodeMirror's own focus/measure transactions; only
+          // an actual change of caret or text counts as activity worth persisting.
+          if (update.docChanged || !update.startState.selection.eq(update.state.selection))
+            this.scheduleViewChange();
+        }),
+        ...(options.readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
+        ...(this.opts.extensions ?? []),
+      ],
+      topLanguage(path),
+    );
   }
 
   private freshState(path: string, text: string, saved?: FileView, options: OpenOptions = {}): EditorState {

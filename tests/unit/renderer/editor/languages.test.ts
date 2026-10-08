@@ -2,7 +2,12 @@ import { EditorState } from "@codemirror/state";
 import { ensureSyntaxTree } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
 import { describe, expect, it, vi } from "vitest";
-import { codeLanguages, genericLanguage, languageFor } from "../../../../src/renderer/editor/languages";
+import {
+  codeLanguages,
+  genericLanguage,
+  languageFor,
+  topLanguage,
+} from "../../../../src/renderer/editor/languages";
 import { editorExtensions } from "../../../../src/renderer/editor/extensions";
 
 describe("languageFor", () => {
@@ -66,6 +71,58 @@ describe("genericLanguage", () => {
   it("handles an unterminated string and a // comment", () => {
     const got = tokens(`"open\n// c`);
     expect(got).toEqual(expect.arrayContaining(['string:"open', "comment:// c"]));
+  });
+});
+
+describe("topLanguage", () => {
+  it("gives JSON/HTML/XML/YAML/TOML files their own grammar and leaves everything else on Markdown", () => {
+    expect(topLanguage("/x/a.json")).not.toBeNull();
+    expect(topLanguage("/x/a.html")).not.toBeNull();
+    expect(topLanguage("/x/a.svg")).not.toBeNull();
+    expect(topLanguage("/x/a.yaml")).not.toBeNull();
+    expect(topLanguage("/x/a.yml")).not.toBeNull();
+    expect(topLanguage("/x/a.toml")).not.toBeNull();
+    expect(topLanguage("/x/a.md")).toBeNull();
+    expect(topLanguage("/x/a.txt")).toBeNull();
+  });
+
+  it("highlights a TOML document with its own grammar (string and comment)", () => {
+    const doc = 'title = "Tiny" # a comment\n';
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({ doc, extensions: editorExtensions([], topLanguage("/x/a.toml")) }),
+    });
+    try {
+      ensureSyntaxTree(view.state, doc.length, 5000);
+      view.dispatch({});
+      const texts = (sel: string) => [...view.contentDOM.querySelectorAll(sel)].map((n) => n.textContent);
+      expect(texts(".te-string")).toContain('"Tiny"');
+      expect(texts(".te-comment")).toContain("# a comment");
+    } finally {
+      view.destroy();
+    }
+  });
+
+  it("highlights a JSON document as JSON, not as Markdown", () => {
+    const doc = '{\n  "name": "tiny",\n  "count": 42\n}\n';
+    const parent = document.createElement("div");
+    document.body.append(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({ doc, extensions: editorExtensions([], topLanguage("/x/a.json")) }),
+    });
+    try {
+      ensureSyntaxTree(view.state, doc.length, 5000);
+      view.dispatch({}); // flush decorations
+      const texts = (sel: string) => [...view.contentDOM.querySelectorAll(sel)].map((n) => n.textContent);
+      expect(texts(".te-property")).toContain('"name"');
+      expect(texts(".te-string")).toContain('"tiny"');
+      expect(texts(".te-number")).toContain("42");
+    } finally {
+      view.destroy();
+    }
   });
 });
 

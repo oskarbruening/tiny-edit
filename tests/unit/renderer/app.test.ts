@@ -25,6 +25,7 @@ function fakeApi(state: AppState, contents: Record<string, string>) {
   const disk = { ...contents };
   const writes: { path: string; text: string; force: boolean }[] = [];
   let conflictNext = false;
+  let formatFails = false;
   let mtime = 0;
   const api = {
     getState: vi.fn(async () => state),
@@ -38,9 +39,14 @@ function fakeApi(state: AppState, contents: Record<string, string>) {
         bom: false,
         stamp: { mtimeMs: ++mtime, size: text.length },
         large: path.endsWith("big.md"),
-        readOnly: path.endsWith("bad.txt"),
+        readOnly: path.endsWith("bad.txt") || path.endsWith("ro.json"),
       };
     }),
+    formatText: vi.fn(async (req: { path: string; text: string }) =>
+      formatFails
+        ? { ok: false as const, error: "boom" }
+        : { ok: true as const, text: `${req.text} [formatted]` },
+    ),
     writeFile: vi.fn(async (req: { path: string; text: string; force?: boolean }) => {
       writes.push({ path: req.path, text: req.text, force: req.force === true });
       if (conflictNext && !req.force) {
@@ -109,6 +115,7 @@ function fakeApi(state: AppState, contents: Record<string, string>) {
     disk,
     writes,
     conflictOnce: () => (conflictNext = true),
+    failFormat: () => (formatFails = true),
     fire: (p: FilesOpened) => opened?.(p),
     requestFlush: () => flushRequest?.(),
     changed: (path: string) => watchChanged?.({ path, stamp: { mtimeMs: 5, size: 5 } }),
@@ -677,6 +684,54 @@ describe("boot", () => {
   });
 
   describe("menu actions and removal", () => {
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+
+    it("Pretty Format replaces the active buffer with the formatted text and autosaves it", async () => {
+      const f = fakeApi(twoFiles(), { "/a.md": "aaa", "/b.md": "bbb" });
+      const app = await boot(document.createElement("div"), f.api);
+      apps.push(app);
+      f.menu({ type: "prettyFormat" });
+      await vi.waitFor(() => expect(app.editor.view.state.doc.toString()).toBe("aaa [formatted]"));
+      expect(f.api.formatText).toHaveBeenCalledWith({ path: "/a.md", text: "aaa" });
+      await app.autosave.flush();
+      expect(f.disk["/a.md"]).toBe("aaa [formatted]");
+    });
+
+    it("Pretty Format leaves the buffer untouched when main reports a problem", async () => {
+      const f = fakeApi(twoFiles(), { "/a.md": "aaa", "/b.md": "bbb" });
+      f.failFormat();
+      const app = await boot(document.createElement("div"), f.api);
+      apps.push(app);
+      f.menu({ type: "prettyFormat" });
+      await tick();
+      expect(app.editor.view.state.doc.toString()).toBe("aaa");
+      expect(f.writes).toHaveLength(0);
+    });
+
+    it("Pretty Format does nothing for a non-formattable, read-only, or absent file", async () => {
+      const state: AppState = {
+        ...defaultState(),
+        files: [
+          { path: "/note.txt", anchor: 0, head: 0, scrollTop: 0 },
+          { path: "/ro.json", anchor: 0, head: 0, scrollTop: 0 },
+        ],
+        activePath: "/note.txt",
+      };
+      const f = fakeApi(state, { "/note.txt": "hi", "/ro.json": "{}" });
+      const app = await boot(document.createElement("div"), f.api);
+      apps.push(app);
+      f.menu({ type: "prettyFormat" }); // .txt has no structured format
+      await tick();
+      await app.openFile("/ro.json");
+      f.menu({ type: "prettyFormat" }); // formattable but opened read-only
+      await tick();
+      f.menu({ type: "showWhatsNew" }); // no active file at all
+      await tick();
+      f.menu({ type: "prettyFormat" });
+      await tick();
+      expect(f.api.formatText).not.toHaveBeenCalled();
+    });
+
     it("Cmd+W / closeFile saves pending edits, removes the active file, and opens its neighbour", async () => {
       const f = fakeApi(twoFiles(), { "/a.md": "aaa", "/b.md": "bbb" });
       const app = await boot(document.createElement("div"), f.api);

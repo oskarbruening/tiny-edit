@@ -1,5 +1,11 @@
 # What's New in Tiny Edit
 
+## 0.3.0 — 2026-10-08
+
+- **Recently Closed.** The File menu now has a Recently Closed submenu with the last 50 files you removed from the sidebar, newest first. Choose one to reopen it. If two have the same name, their folder is shown so you can tell them apart. The list is kept across restarts.
+- **Proper highlighting for JSON, HTML, XML, YAML and TOML.** These files now get their own colours instead of being treated as Markdown (SVG is highlighted as XML).
+- **Pretty Format.** Edit → Pretty Format (⇧⌥F) tidies the current Markdown, JSON, HTML, XML or YAML file with two-space indentation and saves it. Press ⌘Z to undo. If the file has a syntax error, Tiny Edit tells you and leaves it untouched. (TOML is highlighted but not reformatted.)
+
 ## 0.2.1 — 2026-10-08
 
 - **Your bytes are safe.** Files that aren't UTF-8 (old Latin-1 or UTF-16 text) open read-only instead of being rewritten with � characters. Classic Mac line endings and stray carriage returns are kept exactly.

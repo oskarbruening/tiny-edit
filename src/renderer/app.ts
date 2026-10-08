@@ -7,7 +7,7 @@ import {
   type AppState,
   type FileState,
 } from "../shared/state";
-import { displayName, parentDir } from "../shared/text";
+import { displayName, formatOf, parentDir } from "../shared/text";
 import { resolveTheme, type Appearance, type Theme } from "../shared/themes";
 import { parseToc, type Heading } from "../shared/toc";
 import { applyTheme } from "./theme/apply";
@@ -399,6 +399,21 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     render();
   }
 
+  /**
+   * Pretty-format the active file through main (Prettier) and apply the result as one undoable
+   * edit, which autosave then writes to disk. Markdown/JSON/HTML/XML only; read-only files are
+   * left alone. On a parse failure main shows the "problems formatting" dialog and the buffer is
+   * untouched.
+   */
+  async function prettyFormatActive(): Promise<void> {
+    const path = editor.currentPath;
+    if (!path || !formatOf(path) || readOnly.has(path)) return;
+    const text = editor.text(path);
+    if (text === null) return;
+    const result = await api.formatText({ path, text });
+    if (result.ok) editor.formatDocument(path, result.text);
+  }
+
   function handleMenuAction(action: MenuAction): void {
     switch (action.type) {
       case "newFile":
@@ -411,6 +426,9 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
       }
       case "removeFile":
         void removeFile(action.path);
+        break;
+      case "prettyFormat":
+        void prettyFormatActive();
         break;
       case "find":
       case "replace":

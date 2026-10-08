@@ -42,6 +42,8 @@ describe("createApi", () => {
       channel: "shell:openExternal",
       args: ["https://example.com"],
     });
+    const fmt = { path: "/a.json", text: "{}" };
+    await expect(api.formatText(fmt)).resolves.toEqual({ channel: "format:run", args: [fmt] });
     await expect(api.flushed(["/a.md"])).resolves.toEqual({
       channel: "renderer:flushed",
       args: [{ pending: ["/a.md"] }],

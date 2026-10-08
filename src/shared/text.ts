@@ -94,14 +94,51 @@ export function extensionOf(path: string): string {
   return dot > 0 ? base.slice(dot).toLowerCase() : "";
 }
 
+/** Final path segment (file name with its extension), for any separator. */
+export function baseName(path: string): string {
+  return path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+}
+
 /** Directory part of an absolute path ("/" for root-level files). */
 export function parentDir(path: string): string {
   const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return i <= 0 ? "/" : path.slice(0, i);
 }
 
+/** Replaces a leading home directory with `~` for compact display; unchanged if not under home. */
+export function abbreviateHome(path: string, home: string): string {
+  if (home && (path === home || path.startsWith(`${home}/`))) return `~${path.slice(home.length)}`;
+  return path;
+}
+
 export function isAcceptedExtension(path: string): boolean {
   return (ACCEPTED_EXTENSIONS as readonly string[]).includes(extensionOf(path));
+}
+
+/**
+ * The formats Edit → Pretty Format can reformat with Prettier. Everything else (plain text,
+ * source code, TOML — which highlights but has no sane comment-preserving formatter) has no
+ * Pretty Format. Shared so the renderer (menu gating, format gate) and main (Prettier parser
+ * choice) always agree. Highlighting is a separate, wider set — see the renderer's `topLanguage`.
+ */
+export type FileFormat = "markdown" | "json" | "html" | "xml" | "yaml";
+
+const FORMAT_BY_EXTENSION: Readonly<Record<string, FileFormat>> = {
+  ".md": "markdown",
+  ".markdown": "markdown",
+  ".json": "json",
+  ".jsonc": "json",
+  ".html": "html",
+  ".htm": "html",
+  ".xml": "xml",
+  ".svg": "xml",
+  ".yaml": "yaml",
+  ".yml": "yaml",
+};
+
+/** The Pretty Format format for a path by extension, or `null` when it cannot be formatted. */
+export function formatOf(path: string): FileFormat | null {
+  return FORMAT_BY_EXTENSION[extensionOf(path)] ?? null;
 }
 
 export function isHiddenExtension(path: string): boolean {
@@ -110,7 +147,7 @@ export function isHiddenExtension(path: string): boolean {
 
 /** Sidebar label: basename without a hidden (Markdown / text) extension. Other extensions stay visible. */
 export function displayName(path: string): string {
-  const base = path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+  const base = baseName(path);
   const ext = extensionOf(base);
   return isHiddenExtension(base) ? base.slice(0, base.length - ext.length) : base;
 }

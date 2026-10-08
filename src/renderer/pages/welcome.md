@@ -14,7 +14,10 @@ A small, fast editor for plain-text and markdown files.
   - Quick copy buttons for `code spans` and code blocks (see below)
   - H1 and h2 headers (`#` and `##`) show up in the sidebar as a table-of-content
   - Links like this https://edensrise.com have an open-in-browser button on hover
+  - JSON, HTML, XML, YAML and TOML files get their own syntax highlighting
+- Pretty Format (⇧⌥F) tidies a Markdown, JSON, HTML, XML or YAML file with two-space indentation
 - Support for all the usual "⌘N" (new file), "⌘O" (open file)
+  - File → Recently Closed reopens files you removed from the sidebar (last 50)
 - Themes available and customizable in settings
 
 ## Code Block Example

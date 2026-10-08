@@ -2,6 +2,9 @@ import type { IpcMainInvokeEvent } from "electron";
 import { isAbsolute } from "node:path";
 import { CHANNELS, type Channel, type MenuAction, type ThemesList } from "../shared/ipc";
 import { parsePatch, type AppState } from "../shared/state";
+import { formatOf } from "../shared/text";
+import { formatText } from "./format";
+import { forgetOpened, rememberClosed } from "./recent";
 import type { Files, Rejection, WriteRequest } from "./files";
 import type { StateStore } from "./state";
 
@@ -21,6 +24,8 @@ export type IpcDeps = {
   onRendererFlushed?: (senderId: number, pending: string[]) => void;
   /** Paths a drop / Open… refused; main shows the "couldn't open" dialog. */
   onRejected?: (rejected: Rejection[]) => void;
+  /** Pretty Format failed (the file could not be parsed); main shows the warning dialog. */
+  onFormatFailed?: (detail: string) => void;
   /** The stamp the renderer now holds for a file (after read/write); the watcher ignores it. */
   onFileStamp?: (path: string, stamp: { mtimeMs: number; size: number }) => void;
   /** Shows the native context menu for a listed file (Menu.buildFromTemplate + popup). */
@@ -61,12 +66,16 @@ export function registerIpc(deps: IpcDeps): void {
 
   /** Appends new paths to the list and tells the renderer which paths were opened (new or already listed). */
   const appendFiles = (event: IpcMainInvokeEvent, paths: string[]): void => {
-    const current = store.get().files;
-    const known = new Set(current.map((f) => f.path));
+    const s = store.get();
+    const known = new Set(s.files.map((f) => f.path));
     const fresh = paths
       .filter((p) => !known.has(p))
       .map((path) => ({ path, anchor: 0, head: 0, scrollTop: 0 }));
-    if (fresh.length) store.patch({ files: [...current, ...fresh] });
+    const recentlyClosed = forgetOpened(s.recentlyClosed, paths); // opened → no longer "recently closed"
+    const patch: Partial<AppState> = {};
+    if (fresh.length) patch.files = [...s.files, ...fresh];
+    if (recentlyClosed.length !== s.recentlyClosed.length) patch.recentlyClosed = recentlyClosed;
+    if (Object.keys(patch).length) store.patch(patch);
     if (paths.length) event.sender.send(CHANNELS.filesOpened, { paths });
   };
 
@@ -151,6 +160,17 @@ export function registerIpc(deps: IpcDeps): void {
     void shell.openExternal(raw);
   });
 
+  guard(CHANNELS.formatRun, async (_event, raw) => {
+    if (!isRecord(raw)) throw new IpcError("format:run: request must be an object");
+    const path = listedPath(raw["path"], CHANNELS.formatRun);
+    if (typeof raw["text"] !== "string") throw new IpcError("format:run: text must be a string");
+    const format = formatOf(path);
+    if (!format) throw new IpcError("format:run: this file type cannot be formatted");
+    const result = await formatText(format, raw["text"]);
+    if (!result.ok) deps.onFormatFailed?.(result.error);
+    return result;
+  });
+
   guard(CHANNELS.rendererFlushed, (event, raw) => {
     const list = isRecord(raw) && Array.isArray(raw["pending"]) ? raw["pending"] : [];
     const pending = list.filter((p): p is string => typeof p === "string");
@@ -166,7 +186,11 @@ export function registerIpc(deps: IpcDeps): void {
     const path = listedPath(raw, CHANNELS.filesRemove);
     const s = store.get();
     const files = s.files.filter((f) => f.path !== path);
-    return store.patch({ files, activePath: s.activePath === path ? null : s.activePath });
+    return store.patch({
+      files,
+      activePath: s.activePath === path ? null : s.activePath,
+      recentlyClosed: rememberClosed(s.recentlyClosed, path), // closed → remember for File → Recently Closed
+    });
   });
 
   guard(CHANNELS.themesList, (): ThemesList => deps.themes?.() ?? { themes: [], appearance: "light" });
@@ -180,7 +204,7 @@ export function registerIpc(deps: IpcDeps): void {
   });
 }
 
-/** Shared by Open…, Finder/Dock opens and drops that bypass the renderer: accept, append, notify. */
+/** Shared by Open…, Finder/Dock opens, the Recently Closed menu, and drops that bypass the renderer. */
 export async function openPaths(
   paths: readonly string[],
   deps: {
@@ -192,14 +216,20 @@ export async function openPaths(
 ): Promise<void> {
   const result = await deps.files.accept(paths);
   if (result.rejected.length) deps.onRejected?.(result.rejected);
-  if (result.added.length === 0) return;
-  const current = deps.store.get().files;
-  const known = new Set(current.map((f) => f.path));
+  const s = deps.store.get();
+  // Opened paths leave the Recently Closed list; so do rejected ones (a dead entry clicked in the
+  // menu can't be reopened, so drop it instead of letting it linger).
+  const touched = [...result.added, ...result.rejected.map((r) => r.path)];
+  const recentlyClosed = forgetOpened(s.recentlyClosed, touched);
+  const known = new Set(s.files.map((f) => f.path));
   const fresh = result.added
     .filter((p) => !known.has(p))
     .map((path) => ({ path, anchor: 0, head: 0, scrollTop: 0 }));
-  if (fresh.length) deps.store.patch({ files: [...current, ...fresh] });
-  deps.send(CHANNELS.filesOpened, { paths: result.added });
+  const patch: Partial<AppState> = {};
+  if (fresh.length) patch.files = [...s.files, ...fresh];
+  if (recentlyClosed.length !== s.recentlyClosed.length) patch.recentlyClosed = recentlyClosed;
+  if (Object.keys(patch).length) deps.store.patch(patch);
+  if (result.added.length) deps.send(CHANNELS.filesOpened, { paths: result.added });
 }
 
 /** Sender check used in production: the frame must be our renderer (file:// build or the dev server). */

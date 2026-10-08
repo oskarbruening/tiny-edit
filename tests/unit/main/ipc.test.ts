@@ -8,6 +8,7 @@ import { Files } from "../../../src/main/files";
 import { IpcError, openPaths, registerIpc, trustedSenderFor } from "../../../src/main/ipc";
 import { StateStore } from "../../../src/main/state";
 import { CHANNELS } from "../../../src/shared/ipc";
+import type { AppState } from "../../../src/shared/state";
 
 let dir = "";
 let store: StateStore;
@@ -388,6 +389,66 @@ describe("registerIpc", () => {
     call(CHANNELS.rendererFlushed); // no hook injected in the main fixture: must not throw
   });
 
+  describe("format:run", () => {
+    const onFormatFailed = vi.fn();
+    const setup = () => {
+      const h = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();
+      onFormatFailed.mockClear();
+      registerIpc({
+        ipcMain: { handle: (ch, fn) => h.set(ch, fn) },
+        store,
+        files: new Files(fs),
+        shell,
+        clipboard,
+        onFormatFailed,
+      });
+      return (...args: unknown[]) => h.get(CHANNELS.formatRun)!(event, ...args);
+    };
+
+    it("formats a listed JSON file and leaves onFormatFailed untouched", async () => {
+      const p = listed("a.json", "{}");
+      const result = (await setup()({ path: p, text: '{"a":1,"b":2}' })) as { ok: true; text: string };
+      expect(result.ok).toBe(true);
+      expect(result.text).toBe('{ "a": 1, "b": 2 }\n');
+      expect(onFormatFailed).not.toHaveBeenCalled();
+    });
+
+    it("reports a parse failure through onFormatFailed and never alters the text", async () => {
+      const p = listed("bad.json", "{}");
+      const call = setup();
+      const result = (await call({ path: p, text: "{ not json" })) as { ok: false; error: string };
+      expect(result.ok).toBe(false);
+      expect(onFormatFailed).toHaveBeenCalledTimes(1);
+      expect(onFormatFailed).toHaveBeenCalledWith(result.error);
+    });
+
+    it("rejects an unformattable file type, a foreign path and a bad shape", async () => {
+      const txt = listed("note.txt", "hi");
+      const call = setup();
+      await expect(async () => call({ path: txt, text: "hi" })).rejects.toThrow("cannot be formatted");
+      await expect(async () => call({ path: join(dir, "x.json"), text: "{}" })).rejects.toThrow(
+        "not in the file list",
+      );
+      await expect(async () => call("nope")).rejects.toThrow("must be an object");
+      const p = listed("b.json", "{}");
+      await expect(async () => call({ path: p, text: 7 })).rejects.toThrow("text must be a string");
+    });
+  });
+
+  describe("recently closed", () => {
+    it("files:remove adds the path at the front; re-adding removes it; closing again moves it up, unique", async () => {
+      const a = listed("a.md");
+      const b = listed("b.md");
+      expect((call(CHANNELS.filesRemove, a) as AppState).recentlyClosed).toEqual([a]);
+      expect((call(CHANNELS.filesRemove, b) as AppState).recentlyClosed).toEqual([b, a]);
+      // Re-adding `a` (drag back into the sidebar) drops it from the list.
+      await call(CHANNELS.filesAdd, [a]);
+      expect(store.get().recentlyClosed).toEqual([b]);
+      // Closing `a` again puts it at the top, with no duplicate.
+      expect((call(CHANNELS.filesRemove, a) as AppState).recentlyClosed).toEqual([a, b]);
+    });
+  });
+
   it("defaults to trusting every sender when no checker is injected", () => {
     const h = new Map<string, (event: IpcMainInvokeEvent) => unknown>();
     registerIpc({
@@ -432,6 +493,29 @@ describe("openPaths", () => {
       expect(send).toHaveBeenCalledTimes(2);
       await openPaths([join(d, "missing.md")], { files: new Files(fs), store: st, send });
       expect(send).toHaveBeenCalledTimes(2);
+    } finally {
+      await rm(d, { recursive: true, force: true });
+    }
+  });
+
+  it("drops a reopened path from recentlyClosed, and drops a dead entry that was clicked", async () => {
+    const d = await mkdtemp(join(tmpdir(), "tiny-edit-open-"));
+    try {
+      const a = join(d, "a.md");
+      fs.writeFileSync(a, "a");
+      const ghost = join(d, "ghost.md"); // never created
+      const st = new StateStore({ filePath: join(d, "state.json"), fs, onError: () => undefined });
+      st.load();
+      st.patch({ recentlyClosed: [a, ghost] });
+      const onRejected = vi.fn();
+      // Reopening `a` succeeds and removes it from the list.
+      await openPaths([a], { files: new Files(fs), store: st, send: vi.fn(), onRejected });
+      expect(st.get().recentlyClosed).toEqual([ghost]);
+      expect(onRejected).not.toHaveBeenCalled();
+      // Clicking the dead `ghost` entry warns and drops it instead of leaving it to linger.
+      await openPaths([ghost], { files: new Files(fs), store: st, send: vi.fn(), onRejected });
+      expect(onRejected).toHaveBeenCalledTimes(1);
+      expect(st.get().recentlyClosed).toEqual([]);
     } finally {
       await rm(d, { recursive: true, force: true });
     }

@@ -20,6 +20,8 @@ export const CHANNELS = {
   clipboardWrite: "clipboard:write",
   /** R→M: open an http(s)/mailto URL in the default browser (editor link icons / Cmd+click). */
   shellOpenExternal: "shell:openExternal",
+  /** R→M: pretty-format the given buffer text for a listed file (Edit → Pretty Format). */
+  formatRun: "format:run",
   /** M→R: files were added to the list (drop, Cmd+N, Finder open). */
   filesOpened: "files:opened",
   /** M→R: the window is closing; save everything, then answer with renderer:flushed { pending }. */
@@ -70,6 +72,10 @@ export type WriteFileResult = { ok: true; stamp: FileStamp } | { ok: false; conf
 export type AddFilesResult = { added: string[]; rejected: { path: string; reason: string }[] };
 export type CreateFileResult = { ok: true; path: string } | { ok: false; error: string };
 
+export type FormatRequest = { path: string; text: string };
+/** `ok: false` → the file could not be formatted (invalid JSON/XML/…); main shows the warning dialog. */
+export type FormatResult = { ok: true; text: string } | { ok: false; error: string };
+
 export type Api = {
   /** Runtime versions, read synchronously from process.versions in the preload. */
   versions: Versions;
@@ -91,6 +97,8 @@ export type Api = {
   copyText(text: string): Promise<void>;
   /** Opens an allow-listed URL (http/https/mailto) in the default browser; rejects anything else. */
   openExternal(url: string): Promise<void>;
+  /** Pretty-formats buffer text for a listed Markdown/JSON/HTML/XML file. `ok: false` → main showed the warning dialog. */
+  formatText(req: FormatRequest): Promise<FormatResult>;
   /** Native context menu for a listed file; its choices come back as menu actions. */
   showFileMenu(path: string): Promise<void>;
   /** Removes a file from the list (disk untouched); resolves to the new state. */
@@ -121,6 +129,7 @@ export type ThemesList = { themes: Theme[]; appearance: Appearance };
 export type MenuAction =
   | { type: "newFile" }
   | { type: "closeFile" }
+  | { type: "prettyFormat" }
   | { type: "removeFile"; path: string }
   | { type: "find" }
   | { type: "replace" }
@@ -152,6 +161,7 @@ export const API_KEYS = [
   "copyPath",
   "copyText",
   "openExternal",
+  "formatText",
   "pathForFile",
   "onFilesOpened",
   "onFlushRequest",

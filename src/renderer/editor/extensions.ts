@@ -47,8 +47,27 @@ export const fileDropGuard = EditorView.domEventHandlers({
   drop: (event) => (event.dataTransfer?.files?.length ?? 0) > 0,
 });
 
-/** The product rules as CodeMirror configuration. Order matters: our keys win over defaults. */
-export function editorExtensions(extra: readonly Extension[] = []): Extension[] {
+/**
+ * Markdown is the top-level grammar for prose, plain text and source files; `markdownLanguage`
+ * nests fenced code and inline HTML, with the custom list-mark tag for highlighting.
+ */
+export function markdownSupport(): Extension {
+  return markdown({
+    base: markdownLanguage,
+    addKeymap: false,
+    codeLanguages,
+    defaultCodeLanguage: genericLanguage,
+    extensions: [markdownTagExtension],
+  });
+}
+
+/**
+ * The product rules as CodeMirror configuration. Order matters: our keys win over defaults.
+ * `language` overrides the top-level grammar (JSON/HTML/XML files); it defaults to Markdown.
+ * The Markdown-only decorations (code-block panel, rainbow brackets) are harmless on other
+ * grammars — they walk Markdown node types that those documents simply do not contain.
+ */
+export function editorExtensions(extra: readonly Extension[] = [], language?: Extension | null): Extension[] {
   return [
     // Nothing may rewrite the user's text (CLAUDE.md product rule 1).
     EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off", autocapitalize: "off" }),
@@ -70,13 +89,7 @@ export function editorExtensions(extra: readonly Extension[] = []): Extension[] 
     search({ top: true }),
     // addKeymap: false keeps list continuation and other markup helpers off. Fenced code picks
     // its grammar from the info string; unknown or missing → the generic string/comment colouring.
-    markdown({
-      base: markdownLanguage,
-      addKeymap: false,
-      codeLanguages,
-      defaultCodeLanguage: genericLanguage,
-      extensions: [markdownTagExtension],
-    }),
+    language ?? markdownSupport(),
     codeBlockBackground,
     highlighting,
     rainbowBrackets,

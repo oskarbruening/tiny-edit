@@ -1,7 +1,17 @@
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
 import { javascript } from "@codemirror/lang-javascript";
+import { json } from "@codemirror/lang-json";
+import { xml } from "@codemirror/lang-xml";
+import { yaml } from "@codemirror/lang-yaml";
+import { toml as tomlMode } from "@codemirror/legacy-modes/mode/toml";
 import { LanguageDescription, LanguageSupport, StreamLanguage, type Language } from "@codemirror/language";
+import type { Extension } from "@codemirror/state";
+import { extensionOf, formatOf } from "../../shared/text";
+
+/** TOML has no Lezer grammar; the legacy stream mode gives it string/comment/number colouring. */
+const tomlLanguage = StreamLanguage.define(tomlMode);
+const tomlSupport = (): LanguageSupport => new LanguageSupport(tomlLanguage);
 
 /**
  * Fenced-code languages (Q22). Grammars load on first use so launch stays light, except
@@ -21,12 +31,17 @@ export const codeLanguages: readonly LanguageDescription[] = [
   LanguageDescription.of({
     name: "JSON",
     alias: ["json", "jsonc"],
-    load: () => import("@codemirror/lang-json").then((m) => m.json()),
+    load: async () => json(),
   }),
   LanguageDescription.of({
     name: "HTML",
-    alias: ["html", "htm", "xml", "svg"],
+    alias: ["html", "htm", "svg"],
     load: async () => html(),
+  }),
+  LanguageDescription.of({
+    name: "XML",
+    alias: ["xml"],
+    load: async () => xml(),
   }),
   LanguageDescription.of({
     name: "CSS",
@@ -54,7 +69,12 @@ export const codeLanguages: readonly LanguageDescription[] = [
   LanguageDescription.of({
     name: "YAML",
     alias: ["yaml", "yml"],
-    load: () => import("@codemirror/lang-yaml").then((m) => m.yaml()),
+    load: async () => yaml(),
+  }),
+  LanguageDescription.of({
+    name: "TOML",
+    alias: ["toml"],
+    load: async () => tomlSupport(),
   }),
   LanguageDescription.of({
     name: "Go",
@@ -67,6 +87,28 @@ export const codeLanguages: readonly LanguageDescription[] = [
     load: () => import("@codemirror/lang-rust").then((m) => m.rust()),
   }),
 ];
+
+/**
+ * Top-level grammar for a file by type: JSON/HTML/XML/YAML/TOML get their own, everything else
+ * (Markdown, plain text, source code) stays Markdown (`null` → the caller's default Markdown
+ * support). SVG is XML; `.htm`/`.html` are HTML; `.yml` is YAML. TOML highlights but is not in the
+ * Pretty Format set, so it is matched on extension here rather than through `formatOf`.
+ * Highlighting only — the text is never reformatted on open.
+ */
+export function topLanguage(path: string): Extension | null {
+  switch (formatOf(path)) {
+    case "json":
+      return json();
+    case "html":
+      return html();
+    case "xml":
+      return xml();
+    case "yaml":
+      return yaml();
+    default:
+      return extensionOf(path) === ".toml" ? tomlSupport() : null;
+  }
+}
 
 /** The language used for a fence info string, or null (→ defaultCodeLanguage). Markdown nests itself. */
 export function languageFor(info: string): LanguageDescription | null {

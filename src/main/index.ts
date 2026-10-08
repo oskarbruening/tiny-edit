@@ -22,7 +22,8 @@ import { fileContextTemplate, menuTemplate } from "./menu";
 import { OpenQueue } from "./openQueue";
 import { UserThemes } from "./themes";
 import { BUILTIN_THEMES, resolveTheme, type Appearance } from "../shared/themes";
-import { displayName } from "../shared/text";
+import { displayName, formatOf } from "../shared/text";
+import { recentItems } from "./recent";
 import { APP_NAME } from "../shared/constants";
 import { describeRejections, Files, type Rejection } from "./files";
 import { FlushGate, guardClose } from "./flushGate";
@@ -120,6 +121,17 @@ if (!app.requestSingleInstanceLock()) {
       const options = { type: "warning" as const, message, detail, buttons: ["OK"] };
       void (win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options));
     };
+    /** Pretty Format could not parse the active file: tell the user instead of touching the text. */
+    const reportFormatFailed = (): void => {
+      const [win] = BrowserWindow.getAllWindows();
+      const options = {
+        type: "warning" as const,
+        message: "This file has problems formatting.",
+        detail: "Tiny Edit left the file unchanged. Fix the syntax and try Pretty Format again.",
+        buttons: ["OK"],
+      };
+      void (win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options));
+    };
     const openDeps = { files, store, send, onRejected: reportRejected };
     registerIpc({
       ipcMain,
@@ -130,6 +142,7 @@ if (!app.requestSingleInstanceLock()) {
       isTrustedSender: trustedSenderFor(devUrl ? [RENDERER_ORIGIN, devUrl] : [RENDERER_ORIGIN]),
       onRendererFlushed: (id, pending) => flushGate.notify(id, pending),
       onRejected: reportRejected,
+      onFormatFailed: reportFormatFailed,
       onFileStamp: (path, stamp) => watcher.recordStamp(path, stamp),
       showContextMenu: (path, relay) => {
         const template = fileContextTemplate(path, {
@@ -154,6 +167,9 @@ if (!app.requestSingleInstanceLock()) {
             themes: allThemes(),
             themeState: store.get().theme,
             openThemesFolder,
+            canFormat: formatOf(store.get().activePath ?? "") !== null,
+            recentItems: recentItems(store.get().recentlyClosed, app.getPath("home")),
+            openRecent: (path) => void openPaths([path], openDeps),
           }),
         ),
       );
@@ -175,6 +191,16 @@ if (!app.requestSingleInstanceLock()) {
       lastThemeState = now;
       rebuildMenu();
       applyBackground();
+    });
+    // The File/Edit menus depend on the active file's type (Pretty Format) and the Recently Closed
+    // list, so the menu is rebuilt whenever either changes.
+    let lastActivePath = store.get().activePath;
+    let lastRecent = store.get().recentlyClosed;
+    store.subscribe((s) => {
+      if (s.activePath === lastActivePath && s.recentlyClosed === lastRecent) return;
+      lastActivePath = s.activePath;
+      lastRecent = s.recentlyClosed;
+      rebuildMenu();
     });
     nativeTheme.on("updated", () => {
       send(CHANNELS.appearanceChanged, appearance());
