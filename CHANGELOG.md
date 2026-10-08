@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — 2026-10-08
+## 0.2.1 — 2026-10-08
 
 - 2026-10-08 — Fix: files that are not valid UTF-8 (Latin-1, UTF-16) are no longer rewritten with replacement characters on the first autosave; they open read-only with a notice. Classic-Mac (CR) line endings are kept, and a stray CR inside a file is shown and preserved instead of being turned into a line break.
 
@@ -17,6 +17,8 @@
 - 2026-10-08 — Outline: setext headings (text underlined with `===` or `---`) are listed too. Settings: Tab stays inside the dialog.
 
 - 2026-10-08 — Internal: atomic writes keep the file's permission bits and fsync; highlight decorations only scan the visible part of large files; a state write can no longer lose a race with the quit-time flush.
+
+## 0.2.0 — 2026-10-08
 
 - 2026-10-08 — Welcome page: with no file selected the editor shows a short read-only guide to autosave, highlighting and shortcuts. Help → What's New shows a read-only list of recent changes by version.
 
