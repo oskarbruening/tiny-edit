@@ -21,11 +21,11 @@ test("themes: menu switch, automatic follows macOS, user theme hot-reload, persi
 
     // Automatic: force the OS appearance through nativeTheme.
     await first.app.evaluate(({ nativeTheme }) => (nativeTheme.themeSource = "light"));
-    await expect.poll(() => cssVar("--te-surface")).toBe("#fbf9f7");
+    await expect.poll(() => cssVar("--te-surface")).toBe("#ffffff"); // macOS Light
     await first.app.evaluate(({ nativeTheme }) => (nativeTheme.themeSource = "dark"));
-    await expect.poll(() => cssVar("--te-surface")).toBe("#1e1e2e"); // Catppuccin Mocha
+    await expect.poll(() => cssVar("--te-surface")).toBe("#1e1e1e"); // macOS Dark
     await expect.poll(() => page.evaluate(() => document.documentElement.dataset["appearance"])).toBe("dark");
-    await expect.poll(bg).toBe("#1e1e2e");
+    await expect.poll(bg).toBe("#1e1e1e");
 
     // Fixed theme from the menu.
     await clickMenu("theme-tokyo-night");

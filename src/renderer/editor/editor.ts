@@ -17,11 +17,14 @@ export type EditorOptions = {
   extensions?: readonly Extension[];
   /** Focus the editor after opening a file (default true; tests turn it off). */
   autoFocus?: boolean;
+  /** Read-only Markdown shown when no file is open (the welcome page). */
+  placeholder?: string;
 };
 
 /**
  * One EditorView, one EditorState per open file. Switching files swaps states so undo
- * history and unsaved edits survive; opening a file again reuses its state.
+ * history and unsaved edits survive; opening a file again reuses its state. With no file
+ * open the view shows a read-only page (the welcome page, or What's New).
  */
 export class Editor {
   readonly view: EditorView;
@@ -37,7 +40,7 @@ export class Editor {
     this.viewDebounceMs = opts.viewDebounceMs ?? 300;
     this.view = new EditorView({
       parent: host,
-      state: this.blankState(),
+      state: this.pageState(opts.placeholder ?? ""),
     });
     this.view.scrollDOM.addEventListener("scroll", () => this.scheduleViewChange());
   }
@@ -115,13 +118,24 @@ export class Editor {
     return { anchor: sel.anchor, head: sel.head, scrollTop: Math.round(this.view.scrollDOM.scrollTop) };
   }
 
-  /** Forgets a file (removed from the list). Clears the editor if it was active. */
+  /** Forgets a file (removed from the list). Shows the placeholder page if it was active. */
   close(path: string): void {
     this.states.delete(path);
-    if (this.current === path) {
-      this.current = null;
-      this.view.setState(this.blankState());
-    }
+    if (this.current !== path) return;
+    this.current = null; // so showPage does not store the closed file's state again
+    this.showPage(this.opts.placeholder ?? "");
+  }
+
+  /**
+   * Shows bundled read-only Markdown instead of a file (welcome page, What's New). The active
+   * file's state is kept, so opening it again restores its text, undo history and caret.
+   */
+  showPage(text: string): void {
+    this.flushViewChange();
+    if (this.current) this.states.set(this.current, this.view.state);
+    this.current = null;
+    this.view.setState(this.pageState(text));
+    this.view.scrollDOM.scrollTop = 0;
   }
 
   isOpen(path: string): boolean {
@@ -157,10 +171,11 @@ export class Editor {
     });
   }
 
-  private blankState(): EditorState {
+  /** Read-only page: same highlighting, copy and link buttons as a file, but no save hooks. */
+  private pageState(text: string): EditorState {
     return EditorState.create({
-      doc: "",
-      extensions: [...editorExtensions(), EditorState.readOnly.of(true)],
+      doc: text,
+      extensions: [...editorExtensions(), ...(this.opts.extensions ?? []), EditorState.readOnly.of(true)],
     });
   }
 

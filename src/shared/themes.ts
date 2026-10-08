@@ -76,8 +76,8 @@ export type Theme = {
   tokens: ThemeTokens;
 };
 
-export const DEFAULT_LIGHT_ID = "meadow";
-export const DEFAULT_DARK_ID = "catppuccin-mocha";
+export const DEFAULT_LIGHT_ID = "macos-light";
+export const DEFAULT_DARK_ID = "macos-dark";
 export const SYSTEM_MONO = 'ui-monospace, "SF Mono", Menlo, monospace';
 export const THEME_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 

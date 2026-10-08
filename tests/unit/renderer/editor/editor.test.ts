@@ -17,6 +17,30 @@ afterEach(() => {
 });
 
 describe("Editor", () => {
+  it("shows the placeholder page read-only; showPage keeps the active file's state for reopening", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const hooks = { onViewChange: vi.fn(), onDocChange: vi.fn() };
+    const editor = new Editor(host, { hooks, autoFocus: false, placeholder: "# Hi" });
+    editors.push(editor);
+    expect(editor.view.state.doc.toString()).toBe("# Hi");
+    expect(editor.view.state.readOnly).toBe(true);
+    editor.open("/a.md", "aaa");
+    editor.view.dispatch({ changes: { from: 3, insert: "!" }, selection: { anchor: 4 } });
+    hooks.onDocChange.mockClear();
+    editor.showPage("# Page");
+    expect(editor.currentPath).toBeNull();
+    expect(editor.view.state.doc.toString()).toBe("# Page");
+    expect(editor.view.state.readOnly).toBe(true);
+    expect(hooks.onViewChange).toHaveBeenLastCalledWith("/a.md", expect.objectContaining({ anchor: 4 }));
+    expect(editor.text("/a.md")).toBe("aaa!");
+    editor.open("/a.md", "stale");
+    expect(editor.view.state.doc.toString()).toBe("aaa!");
+    editor.close("/a.md");
+    expect(editor.view.state.doc.toString()).toBe("# Hi");
+    expect(hooks.onDocChange).not.toHaveBeenCalled();
+  });
+
   it("starts blank and read-only, opens a file with the saved caret clamped", () => {
     const { editor } = make();
     editors.push(editor);

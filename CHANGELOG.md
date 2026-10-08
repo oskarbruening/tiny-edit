@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- 2026-10-08 — Welcome page: with no file selected the editor shows a short read-only guide to autosave, highlighting and shortcuts. Help → What's New shows a read-only list of recent changes by version.
+
+- 2026-10-08 — Settings: the font-size slider moves in 1 px steps (10–18 px).
+
+- 2026-10-08 — Themes: a new install defaults to Automatic with macOS Light and macOS Dark (Fixed: macOS Light).
+
 - 2026-10-08 — Themes: added "macOS Light", a built-in light theme matching Apple's system light appearance (white text background, systemBlue accent, SF Mono) with Xcode Default (Light) syntax accents; the counterpart of macOS Dark.
 
 - 2026-10-08 — Settings: a "Syntax highlighting" checkbox under Editor turns all highlighting off, so every character renders in the plain text colour (no bold or italic either). Markdown markers stay visible, fenced code blocks keep their panel, and the copy and open-link buttons still appear on hover.

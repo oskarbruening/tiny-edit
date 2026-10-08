@@ -13,6 +13,7 @@ import { openLinks } from "./editor/links";
 import { Editor } from "./editor/editor";
 import type { ScopeRange } from "./editor/scope";
 import { Notice } from "./notice";
+import { WELCOME_PAGE, WHATS_NEW_PAGE } from "./pages/pages";
 import { Settings } from "./settings/settings";
 import { reorder, Sidebar } from "./sidebar/sidebar";
 import { Store } from "./store";
@@ -79,6 +80,8 @@ export type App = {
   reloadFile: (path: string) => Promise<void>;
   /** Remove from the list after saving pending edits; opens a neighbour if it was active. */
   removeFile: (path: string) => Promise<void>;
+  /** Save and deselect the active file, then show a read-only page (welcome, What's New). */
+  showPage: (text: string) => Promise<void>;
   handleMenuAction: (action: MenuAction) => void;
   /** The theme currently painted. */
   currentTheme: () => Theme;
@@ -162,6 +165,7 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
       copyButtons((text) => void api.copyText(text)),
       openLinks((url) => void api.openExternal(url)),
     ],
+    placeholder: WELCOME_PAGE,
   });
 
   const autosave = new Autosave({
@@ -306,6 +310,15 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     if (wasActive && neighbour) await openFile(neighbour.path);
   }
 
+  async function showPage(text: string): Promise<void> {
+    const active = editor.currentPath;
+    if (active) await autosave.flush(active);
+    store.setActive(null);
+    notice.hide();
+    editor.showPage(text);
+    render();
+  }
+
   function handleMenuAction(action: MenuAction): void {
     switch (action.type) {
       case "newFile":
@@ -331,6 +344,9 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
         break;
       case "openSettings":
         settings.toggle();
+        break;
+      case "showWhatsNew":
+        void showPage(WHATS_NEW_PAGE);
         break;
       case "setThemeMode":
         store.patch({ theme: { ...store.get().theme, mode: "auto" } });
@@ -423,6 +439,7 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
     openFile,
     reloadFile,
     removeFile,
+    showPage,
     handleMenuAction,
     currentTheme: () => resolveTheme(store.get().theme, themes, appearance),
     conflicts,

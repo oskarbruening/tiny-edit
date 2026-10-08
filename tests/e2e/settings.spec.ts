@@ -21,13 +21,16 @@ test("settings: opens from the app menu, font-size slider and theme picks apply 
     await expect(panel).toBeVisible();
     await expect(page.locator(".settings__title")).toHaveText("Settings");
 
-    // Slider: middle step is the current 14 px; one step right → 16 px.
+    // Slider: 1 px steps from the current 14 px; two steps right → 16 px.
     const slider = page.locator(".settings__font");
-    await expect(slider).toHaveValue("3");
+    await expect(slider).toHaveValue("14");
     await expect(page.locator(".settings__font-value")).toHaveText("14 px");
     await slider.focus();
     await page.keyboard.press("ArrowRight");
-    await expect(slider).toHaveValue("4");
+    await expect(slider).toHaveValue("15");
+    await expect(page.locator(".settings__font-value")).toHaveText("15 px");
+    await page.keyboard.press("ArrowRight");
+    await expect(slider).toHaveValue("16");
     await expect(page.locator(".settings__font-value")).toHaveText("16 px");
     await expect.poll(() => cssVar("--te-font-size")).toBe("16px");
 
@@ -71,7 +74,7 @@ test("settings: opens from the app menu, font-size slider and theme picks apply 
       )
       .toBe("16px");
     await second.app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById("settings")!.click());
-    await expect(page2.locator(".settings__font")).toHaveValue("4");
+    await expect(page2.locator(".settings__font")).toHaveValue("16");
     await second.close();
   } finally {
     await rm(userData, { recursive: true, force: true });

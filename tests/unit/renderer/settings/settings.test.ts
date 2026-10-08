@@ -35,8 +35,8 @@ describe("Settings", () => {
     expect(q(".settings__panel").getAttribute("role")).toBe("dialog");
     expect(q(".settings__title").textContent).toBe(SETTINGS_TITLE);
     expect(q<HTMLInputElement>(".settings__font").type).toBe("range");
-    expect(q<HTMLInputElement>(".settings__font").min).toBe("1");
-    expect(q<HTMLInputElement>(".settings__font").max).toBe("5");
+    expect(q<HTMLInputElement>(".settings__font").min).toBe("10");
+    expect(q<HTMLInputElement>(".settings__font").max).toBe("18");
     expect(q<HTMLInputElement>("#settings-highlight").type).toBe("checkbox");
     expect(q<HTMLLabelElement>("label[for='settings-highlight']").textContent).toBe("Syntax highlighting");
     expect([...host.querySelectorAll(".settings__heading")].map((h) => h.textContent)).toEqual([
@@ -46,7 +46,7 @@ describe("Settings", () => {
     expect(q(".settings__done").textContent).toBe("Done");
   });
 
-  it("update() reflects mode, selections, enablement and the nearest font step", () => {
+  it("update() reflects mode, selections, enablement and the font size", () => {
     const { settings, q } = make();
     settings.update(snapshot());
     expect(q<HTMLInputElement>("#settings-mode-auto").checked).toBe(true);
@@ -66,12 +66,12 @@ describe("Settings", () => {
       "catppuccin-mocha",
       "macos-dark",
     ]);
-    expect(light.value).toBe("meadow");
-    expect(dark.value).toBe("catppuccin-mocha");
+    expect(light.value).toBe("macos-light");
+    expect(dark.value).toBe("macos-dark");
     expect(fixed.options).toHaveLength(8);
     expect(fixed.disabled).toBe(true);
     expect(light.disabled).toBe(false);
-    expect(q<HTMLInputElement>(".settings__font").value).toBe("3");
+    expect(q<HTMLInputElement>(".settings__font").value).toBe("14");
     expect(q(".settings__font-value").textContent).toBe("14 px");
     expect(q<HTMLInputElement>("#settings-highlight").checked).toBe(true);
 
@@ -89,8 +89,16 @@ describe("Settings", () => {
     expect(dark.disabled).toBe(true);
     expect(fixed.value).toBe("catppuccin-latte");
     expect(dark.value).toBe("tokyo-night");
-    expect(q<HTMLInputElement>(".settings__font").value).toBe("2");
-    expect(q(".settings__font-value").textContent).toBe("12 px");
+    expect(q<HTMLInputElement>(".settings__font").value).toBe("11");
+    expect(q(".settings__font-value").textContent).toBe("11 px");
+
+    // A zoomed size outside the slider pins the thumb to the end but shows the real size.
+    settings.update(snapshot({ fontSize: 30 }));
+    expect(q<HTMLInputElement>(".settings__font").value).toBe("18");
+    expect(q(".settings__font-value").textContent).toBe("30 px");
+    settings.update(snapshot({ fontSize: 8 }));
+    expect(q<HTMLInputElement>(".settings__font").value).toBe("10");
+    expect(q(".settings__font-value").textContent).toBe("8 px");
   });
 
   it("labels custom themes like the menu and leaves a vanished theme unselected", () => {
@@ -146,7 +154,7 @@ describe("Settings", () => {
     q<HTMLSelectElement>(".settings__fixed").dispatchEvent(new Event("change"));
     expect(hooks.onTheme).not.toHaveBeenCalled();
     const slider = q<HTMLInputElement>(".settings__font");
-    slider.value = "9"; // the DOM clamps to max
+    slider.value = "99"; // the DOM clamps to max
     slider.dispatchEvent(new Event("input"));
     expect(hooks.onFontSize).toHaveBeenLastCalledWith(18);
     slider.value = "abc"; // non-numeric: the DOM resets a range to its midpoint
@@ -167,18 +175,13 @@ describe("Settings", () => {
     expect(hooks.onHighlight).toHaveBeenCalledTimes(2);
   });
 
-  it("maps slider steps to px and shows the value live", () => {
+  it("moves in 1 px steps and shows the value live", () => {
     const { settings, hooks, q } = make();
     settings.update(snapshot());
     const slider = q<HTMLInputElement>(".settings__font");
-    for (const [step, px] of [
-      ["1", 10],
-      ["2", 12],
-      ["3", 14],
-      ["4", 16],
-      ["5", 18],
-    ] as const) {
-      slider.value = step;
+    expect(slider.step).toBe("1");
+    for (let px = 10; px <= 18; px++) {
+      slider.value = String(px);
       slider.dispatchEvent(new Event("input"));
       expect(hooks.onFontSize).toHaveBeenLastCalledWith(px);
       expect(q(".settings__font-value").textContent).toBe(`${px} px`);

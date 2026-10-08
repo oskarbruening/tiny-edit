@@ -141,6 +141,10 @@ export function menuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] {
     },
     { label: "View", submenu: view },
     { role: "windowMenu" },
+    {
+      role: "help",
+      submenu: [{ id: "whats-new", label: "What's New", click: relay({ type: "showWhatsNew" }) }],
+    },
   ];
 }
 

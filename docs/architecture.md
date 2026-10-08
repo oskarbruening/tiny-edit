@@ -1,6 +1,6 @@
 # tiny-edit — Architecture
 
-Last updated 2026-10-07 (matches the code after build step 10).
+Last updated 2026-10-08 (matches the code after build step 10, plus welcome / What's New pages).
 
 ## Purpose
 
@@ -79,7 +79,7 @@ Narrowing is `editor/scope.ts`: a `StateField<{from,to}|null>` set by a `setScop
   "sidebarVisible": true,
   "fontSize": 14,
   "highlight": true,
-  "theme": { "mode": "auto", "light": "meadow", "dark": "catppuccin-mocha", "fixed": "tokyo-night" },
+  "theme": { "mode": "auto", "light": "macos-light", "dark": "macos-dark", "fixed": "macos-light" },
   "activePath": "/Users/muse/notes/todo.md",
   "files": [{ "path": "/Users/muse/notes/todo.md", "anchor": 1234, "head": 1234, "scrollTop": 480 }]
 }
@@ -92,26 +92,26 @@ Narrowing is `editor/scope.ts`: a `StateField<{from,to}|null>` set by a `setScop
 
 ## IPC channels (`src/shared/ipc.ts`)
 
-| Channel                               | Direction | Payload → Result                                                                                                                              |
-| ------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `state:get`                           | R→M       | → full `State`                                                                                                                                |
-| `state:patch`                         | R→M       | `Partial<State>` → void (debounced write)                                                                                                     |
-| `file:read`                           | R→M       | `{ path }` → `{ text, eol, mtimeMs, size }`                                                                                                   |
-| `file:write`                          | R→M       | `{ path, text, eol }` → `{ mtimeMs, size }`                                                                                                   |
-| `file:create`                         | R→M       | `{ dir, name }` → `{ path }`                                                                                                                  |
-| `files:add`                           | R→M       | `{ paths }` → `{ added: string[], rejected: {path, reason}[] }`                                                                               |
-| `files:reveal` / `files:copyPath`     | R→M       | `{ path }` → void                                                                                                                             |
-| `clipboard:write`                     | R→M       | `text` → void (editor copy buttons; any string)                                                                                               |
-| `shell:openExternal`                  | R→M       | `url` (string) → void (allow-listed: `https`/`http`/`mailto`)                                                                                 |
-| `themes:list`                         | R→M       | → `Theme[]` (built-ins + user)                                                                                                                |
-| `themes:openFolder`                   | R→M       | → void                                                                                                                                        |
-| `renderer:ready` / `renderer:flushed` | R→M       | signals                                                                                                                                       |
-| `watch:changed` / `watch:missing`     | M→R       | `{ path, mtimeMs?, size? }`                                                                                                                   |
-| `files:opened`                        | M→R       | `{ paths }` (from `open-file`, dialog, Dock)                                                                                                  |
-| `menu:action`                         | M→R       | `{ type: 'find' \| 'replace' \| 'toggleSidebar' \| 'openSettings' \| 'zoomIn' \| 'zoomOut' \| 'zoomReset' \| 'closeFile' \| 'newFile' \| … }` |
-| `themes:changed`                      | M→R       | `Theme[]` (user theme folder hot reload)                                                                                                      |
-| `appearance:changed`                  | M→R       | `'light' \| 'dark'` (nativeTheme)                                                                                                             |
-| `renderer:flush`                      | M→R       | request flush before quit                                                                                                                     |
+| Channel                               | Direction | Payload → Result                                                                                                                                                |
+| ------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state:get`                           | R→M       | → full `State`                                                                                                                                                  |
+| `state:patch`                         | R→M       | `Partial<State>` → void (debounced write)                                                                                                                       |
+| `file:read`                           | R→M       | `{ path }` → `{ text, eol, mtimeMs, size }`                                                                                                                     |
+| `file:write`                          | R→M       | `{ path, text, eol }` → `{ mtimeMs, size }`                                                                                                                     |
+| `file:create`                         | R→M       | `{ dir, name }` → `{ path }`                                                                                                                                    |
+| `files:add`                           | R→M       | `{ paths }` → `{ added: string[], rejected: {path, reason}[] }`                                                                                                 |
+| `files:reveal` / `files:copyPath`     | R→M       | `{ path }` → void                                                                                                                                               |
+| `clipboard:write`                     | R→M       | `text` → void (editor copy buttons; any string)                                                                                                                 |
+| `shell:openExternal`                  | R→M       | `url` (string) → void (allow-listed: `https`/`http`/`mailto`)                                                                                                   |
+| `themes:list`                         | R→M       | → `Theme[]` (built-ins + user)                                                                                                                                  |
+| `themes:openFolder`                   | R→M       | → void                                                                                                                                                          |
+| `renderer:ready` / `renderer:flushed` | R→M       | signals                                                                                                                                                         |
+| `watch:changed` / `watch:missing`     | M→R       | `{ path, mtimeMs?, size? }`                                                                                                                                     |
+| `files:opened`                        | M→R       | `{ paths }` (from `open-file`, dialog, Dock)                                                                                                                    |
+| `menu:action`                         | M→R       | `{ type: 'find' \| 'replace' \| 'toggleSidebar' \| 'openSettings' \| 'showWhatsNew' \| 'zoomIn' \| 'zoomOut' \| 'zoomReset' \| 'closeFile' \| 'newFile' \| … }` |
+| `themes:changed`                      | M→R       | `Theme[]` (user theme folder hot reload)                                                                                                                        |
+| `appearance:changed`                  | M→R       | `'light' \| 'dark'` (nativeTheme)                                                                                                                               |
+| `renderer:flush`                      | M→R       | request flush before quit                                                                                                                                       |
 
 Every R→M handler validates types and paths; path-bearing calls other than `files:add`/`file:create` require the path to be in `state.files`. Every handler also checks `event.senderFrame.url` against our renderer origins (`file://` build, or the dev server URL) via `trustedSenderFor`. Text acceptance: accepted extension (`.md .markdown .txt .text`) or the first 8 KB has no NUL and decodes as UTF-8. The preload's `pathForFile` wraps `webUtils.getPathForFile` and returns `""` for anything that is not a disk file.
 
@@ -132,6 +132,7 @@ Every R→M handler validates types and paths; path-bearing calls other than `fi
 
 ## Themes (`src/shared/themes.ts`)
 
+- Default for a new install: Automatic with macOS Light / macOS Dark (Fixed: macOS Light); `DEFAULT_LIGHT_ID` / `DEFAULT_DARK_ID` are also the fallbacks when a chosen theme is missing.
 - Eight built-ins: Meadow (light), Tokyo Night, Catppuccin Latte (light), Frappé, Macchiato, Mocha (dark), macOS Light (light), macOS Dark (dark). UI roles are the hub's; syntax palettes are the canonical Tokyo Night / Catppuccin colours, and Apple's system / Xcode Default (Light / Dark) accents for the two macOS themes. `resolveTheme(setting, themes, appearance)` never fails (falls back to the defaults, then Meadow).
 - Main: `UserThemes` loads `userData/themes/*.json` (defensive `parseUserTheme`: id from the file name, appearance from surface luminance, tokens filled from the matching built-in), watches the folder (200 ms debounce) and pushes `themes:changed`; `nativeTheme.updated` pushes `appearance:changed`; both plus theme-state changes rebuild the View → Theme menu (Automatic / fixed radios, Light/Dark-for-Automatic submenus, Open Themes Folder) and re-set the window's `backgroundColor` to the theme surface so nothing flashes.
 - Renderer: `applyTheme` writes every `--te-*` variable (`themeCssVars`), `data-appearance`, `data-theme` and `color-scheme` on `<html>`; re-painted on theme-state, theme-list and appearance changes. A unit test checks that every `var(--te-*)` used in `styles.css` is produced by `themeCssVars` (layout vars excepted) and that the CSS defaults equal Meadow.
@@ -200,11 +201,18 @@ type ThemeTokens = {
 - Mode `auto` picks `theme.light` / `theme.dark` from `nativeTheme.shouldUseDarkColors`; mode `fixed` uses `theme.fixed`.
 - User themes: `userData/themes/*.json` matching `Theme` minus `builtin`; folder watched, invalid files skipped with a console warning; View → Theme → Open Themes Folder.
 
+## Read-only pages (`src/renderer/pages/`)
+
+- `welcome.md` and `whats-new.md` are bundled with Vite `?raw` imports (`pages.ts`); never written to disk, never in the sidebar.
+- `Editor.showPage(text)` shows Markdown in a read-only `EditorState` with the normal highlighting, copy and link extensions but no save/view hooks; the active file's state is kept, so reopening it restores text, undo history and caret.
+- **Welcome:** the editor's `placeholder`; shown at launch with no `activePath` and whenever the active file is closed.
+- **What's New:** Help → What's New relays `menu:action { type: 'showWhatsNew' }` → the renderer flushes the active file, sets `activePath` to null (window title becomes "Tiny Edit") and shows the page. Clicking a file returns to it. Sections are per version (`## 0.2.0 — YYYY-MM-DD`), newest first, with an "Unreleased" block on top until a version is cut.
+
 ## Settings (`src/renderer/settings/`)
 
 - App menu → Settings… (Cmd+,) relays `menu:action { type: 'openSettings' }`; the renderer toggles an in-window overlay panel (`role="dialog"`, Esc / backdrop / Done close it, focus returns to the editor). No second window, no extra IPC: the panel reads the store and the theme list and persists through the existing `state:patch`.
 - **Theme:** Automatic (with the Light / Dark pair) or Fixed (one theme); the same `ThemeState` the View → Theme menu edits, so both stay in sync (menu rebuild on state change, panel `update()` on store/theme-list change).
-- **Font size:** a five-step slider over `FONT_SIZE_STEPS` (10 / 12 / 14 / 16 / 18 px; the 14 px default is the middle step). It writes `fontSize` exactly like Cmd+/− zoom; a zoomed size between steps shows the nearest step. Everything not part of a theme that becomes user-configurable later goes here.
+- **Font size:** a slider over `FONT_SLIDER_RANGE` (10–18 px in 1 px steps; default 14 px). It writes `fontSize` exactly like Cmd+/− zoom; a zoomed size outside the range pins the thumb to the nearest end while the label shows the real size.
 - **Syntax highlighting:** a checkbox bound to `highlight` (default on). Off puts `highlight-off` on `<html>` (`applyViewState`) and a rule in `styles.css` makes every `te-*` syntax class inherit colour, weight, slant and decoration, so all text is the body colour. Purely CSS: the Markdown parser, the fenced-code grammars, the code-block panel, bracket-match and search backgrounds, copy and open-link buttons all keep working.
 - Styles live in `settings/settings.css` (linked from `index.html`), tokens only; the CSS-variable coverage test scans it too.
 
