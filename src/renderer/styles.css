@@ -412,6 +412,43 @@ html.sidebar-hidden .sidebar {
   color: var(--te-syntax-bracket-3);
 }
 
+/* Settings → Syntax highlighting off: every syntax class renders as plain body text (colour,
+   weight, slant and strike-through all inherit). Only text styling is affected: code-block
+   panels, bracket-match and search backgrounds, copy and open-link buttons stay. */
+html.highlight-off .te-heading,
+html.highlight-off .te-strong,
+html.highlight-off .te-emphasis,
+html.highlight-off .te-strikethrough,
+html.highlight-off .te-link,
+html.highlight-off .te-url,
+html.highlight-off .te-inline-code,
+html.highlight-off .te-quote,
+html.highlight-off .te-list-marker,
+html.highlight-off .te-hr,
+html.highlight-off .te-marker,
+html.highlight-off .te-code-fence,
+html.highlight-off .te-html-tag,
+html.highlight-off .te-keyword,
+html.highlight-off .te-string,
+html.highlight-off .te-number,
+html.highlight-off .te-comment,
+html.highlight-off .te-operator,
+html.highlight-off .te-type,
+html.highlight-off .te-function,
+html.highlight-off .te-property,
+html.highlight-off .te-variable,
+html.highlight-off .te-atom,
+html.highlight-off .te-meta,
+html.highlight-off .te-invalid,
+html.highlight-off .te-bracket-1,
+html.highlight-off .te-bracket-2,
+html.highlight-off .te-bracket-3 {
+  color: inherit;
+  font-weight: inherit;
+  font-style: inherit;
+  text-decoration: none;
+}
+
 /* Copy buttons for inline code (`…`) and fenced code blocks (```), revealed on hover. */
 .te-copy {
   position: absolute;

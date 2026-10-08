@@ -14,6 +14,8 @@ export type AppState = {
   sidebarWidth: number;
   sidebarVisible: boolean;
   fontSize: number;
+  /** Syntax highlighting on (default). Off → every token renders in the body text colour. */
+  highlight: boolean;
   theme: ThemeState;
   activePath: string | null;
   files: FileState[];
@@ -21,7 +23,10 @@ export type AppState = {
 
 /** Keys the renderer may patch. `version` and `window` are owned by main. */
 export type StatePatch = Partial<
-  Pick<AppState, "sidebarWidth" | "sidebarVisible" | "fontSize" | "theme" | "activePath" | "files">
+  Pick<
+    AppState,
+    "sidebarWidth" | "sidebarVisible" | "fontSize" | "highlight" | "theme" | "activePath" | "files"
+  >
 >;
 
 export const SIDEBAR_WIDTH_RANGE = { min: 120, max: 600 } as const;
@@ -45,6 +50,7 @@ export function defaultState(): AppState {
     sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
     sidebarVisible: true,
     fontSize: DEFAULT_FONT_SIZE,
+    highlight: true,
     theme: { mode: "auto", light: "meadow", dark: "catppuccin-mocha", fixed: "meadow" },
     activePath: null,
     files: [],
@@ -135,6 +141,7 @@ export function parseState(raw: unknown): AppState {
     ),
     sidebarVisible: typeof raw["sidebarVisible"] === "boolean" ? raw["sidebarVisible"] : d.sidebarVisible,
     fontSize: clampInt(raw["fontSize"], FONT_SIZE_RANGE.min, FONT_SIZE_RANGE.max, d.fontSize),
+    highlight: typeof raw["highlight"] === "boolean" ? raw["highlight"] : d.highlight,
     theme: parseTheme(raw["theme"], d.theme),
     activePath: parseActivePath(raw["activePath"], files),
     files,
@@ -159,6 +166,7 @@ export function parsePatch(raw: unknown, current: AppState): StatePatch {
   if (typeof raw["sidebarVisible"] === "boolean") out.sidebarVisible = raw["sidebarVisible"];
   if ("fontSize" in raw && isFiniteNumber(raw["fontSize"]))
     out.fontSize = clampInt(raw["fontSize"], FONT_SIZE_RANGE.min, FONT_SIZE_RANGE.max, current.fontSize);
+  if (typeof raw["highlight"] === "boolean") out.highlight = raw["highlight"];
   if (isRecord(raw["theme"])) out.theme = parseTheme(raw["theme"], current.theme);
   if (Array.isArray(raw["files"])) out.files = parseFiles(raw["files"]);
   if ("activePath" in raw) {

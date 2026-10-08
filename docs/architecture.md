@@ -78,6 +78,7 @@ Narrowing is `editor/scope.ts`: a `StateField<{from,to}|null>` set by a `setScop
   "sidebarWidth": 200,
   "sidebarVisible": true,
   "fontSize": 14,
+  "highlight": true,
   "theme": { "mode": "auto", "light": "meadow", "dark": "catppuccin-mocha", "fixed": "tokyo-night" },
   "activePath": "/Users/muse/notes/todo.md",
   "files": [{ "path": "/Users/muse/notes/todo.md", "anchor": 1234, "head": 1234, "scrollTop": 480 }]
@@ -204,6 +205,7 @@ type ThemeTokens = {
 - App menu → Settings… (Cmd+,) relays `menu:action { type: 'openSettings' }`; the renderer toggles an in-window overlay panel (`role="dialog"`, Esc / backdrop / Done close it, focus returns to the editor). No second window, no extra IPC: the panel reads the store and the theme list and persists through the existing `state:patch`.
 - **Theme:** Automatic (with the Light / Dark pair) or Fixed (one theme); the same `ThemeState` the View → Theme menu edits, so both stay in sync (menu rebuild on state change, panel `update()` on store/theme-list change).
 - **Font size:** a five-step slider over `FONT_SIZE_STEPS` (10 / 12 / 14 / 16 / 18 px; the 14 px default is the middle step). It writes `fontSize` exactly like Cmd+/− zoom; a zoomed size between steps shows the nearest step. Everything not part of a theme that becomes user-configurable later goes here.
+- **Syntax highlighting:** a checkbox bound to `highlight` (default on). Off puts `highlight-off` on `<html>` (`applyViewState`) and a rule in `styles.css` makes every `te-*` syntax class inherit colour, weight, slant and decoration, so all text is the body colour. Purely CSS: the Markdown parser, the fenced-code grammars, the code-block panel, bracket-match and search backgrounds, copy and open-link buttons all keep working.
 - Styles live in `settings/settings.css` (linked from `index.html`), tokens only; the CSS-variable coverage test scans it too.
 
 ## Window

@@ -47,14 +47,19 @@ export function mount(root: HTMLElement): Shell {
   return { sidebar, list, divider, editorHost, noticeHost, settingsHost };
 }
 
-/** Pushes persisted view settings into CSS variables on the root element. */
+/**
+ * Pushes persisted view settings into CSS variables and classes on the root element.
+ * `highlight-off` makes every syntax class render as plain body text (styles.css); the
+ * parser, code-block panels, copy and link buttons are untouched.
+ */
 export function applyViewState(
   root: HTMLElement,
-  state: Pick<AppState, "sidebarWidth" | "sidebarVisible" | "fontSize">,
+  state: Pick<AppState, "sidebarWidth" | "sidebarVisible" | "fontSize" | "highlight">,
 ): void {
   root.style.setProperty("--te-sidebar-width", state.sidebarVisible ? `${state.sidebarWidth}px` : "0px");
   root.style.setProperty("--te-font-size", `${state.fontSize}px`);
   root.classList.toggle("sidebar-hidden", !state.sidebarVisible);
+  root.classList.toggle("highlight-off", !state.highlight);
 }
 
 export type App = {
@@ -104,12 +109,18 @@ export async function boot(root: HTMLElement, api: Api, opts: BootOptions = {}):
   const settings = new Settings(shell.settingsHost, {
     onTheme: (theme) => store.patch({ theme }),
     onFontSize: (fontSize) => store.patch({ fontSize }),
+    onHighlight: (highlight) => store.patch({ highlight }),
     onClose: () => {
       if (editor.currentPath) editor.view.focus();
     },
   });
   const syncSettings = (): void =>
-    settings.update({ theme: store.get().theme, fontSize: store.get().fontSize, themes });
+    settings.update({
+      theme: store.get().theme,
+      fontSize: store.get().fontSize,
+      highlight: store.get().highlight,
+      themes,
+    });
   syncSettings();
   const missing = new Set<string>();
   /** Files whose disk copy changed while they had unsaved edits; the bar shows when they are active. */

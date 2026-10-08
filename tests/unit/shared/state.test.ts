@@ -20,6 +20,7 @@ describe("defaultState", () => {
     expect(d.sidebarWidth).toBe(200);
     expect(d.sidebarVisible).toBe(true);
     expect(d.fontSize).toBe(14);
+    expect(d.highlight).toBe(true);
     expect(d.theme.mode).toBe("auto");
     expect(d.activePath).toBeNull();
     expect(d.files).toEqual([]);
@@ -39,6 +40,7 @@ describe("parseState", () => {
       sidebarWidth: 240,
       sidebarVisible: false,
       fontSize: 16,
+      highlight: false,
       theme: { mode: "fixed", light: "a", dark: "b", fixed: "c" },
       files: [{ path: "/a.md", anchor: 3, head: 7, scrollTop: 100 }],
       activePath: "/a.md",
@@ -56,6 +58,7 @@ describe("parseState", () => {
       sidebarWidth: "wide",
       sidebarVisible: "yes",
       fontSize: null,
+      highlight: "yes",
       theme: 7,
       files: "none",
       activePath: "/missing.md",
@@ -154,18 +157,25 @@ describe("parsePatch", () => {
 
   it("ignores unknown and invalid keys", () => {
     expect(
-      parsePatch({ version: 2, window: { width: 1 }, sidebarWidth: "x", fontSize: null, nope: 1 }, current),
+      parsePatch(
+        { version: 2, window: { width: 1 }, sidebarWidth: "x", fontSize: null, highlight: "off", nope: 1 },
+        current,
+      ),
     ).toEqual({});
     expect(parsePatch(null, current)).toEqual({});
   });
 
   it("validates each present key", () => {
     expect(
-      parsePatch({ sidebarWidth: 1, sidebarVisible: false, fontSize: 20, theme: { mode: "fixed" } }, current),
+      parsePatch(
+        { sidebarWidth: 1, sidebarVisible: false, fontSize: 20, highlight: false, theme: { mode: "fixed" } },
+        current,
+      ),
     ).toEqual({
       sidebarWidth: 120,
       sidebarVisible: false,
       fontSize: 20,
+      highlight: false,
       theme: { ...current.theme, mode: "fixed" },
     });
   });
