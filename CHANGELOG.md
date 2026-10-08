@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-10-08
 
 - 2026-10-08 — Welcome page: with no file selected the editor shows a short read-only guide to autosave, highlighting and shortcuts. Help → What's New shows a read-only list of recent changes by version.
 
