@@ -1,6 +1,6 @@
 # What's New in Tiny Edit
 
-## Unreleased
+## 0.2.0 — 2026-10-08
 
 - **Welcome page.** With no file selected, the editor shows a short guide to autosave, highlighting and shortcuts.
 - **What's New.** Help → What's New shows this page.
