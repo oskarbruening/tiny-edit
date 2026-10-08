@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- 2026-10-07 — Editor: fenced code blocks (```) now sit in a subtle inset panel — a slightly recessed background with a bordered, rounded box that runs nearly edge to edge (small side margin). Highlighting and the visible fence markers are unchanged.
+
+- 2026-10-07 — Editor: Markdown links (`[text](url)`) and autolinks (`<url>`) pointing at an http(s)/mailto address show an open-link button on hover and open in the default browser on ⌘-click anywhere on the link. Relative and fragment links are left inert; bare URLs in plain text are not detected.
+
 - 2026-10-07 — Editor: hovering inline code (`…`) or a fenced code block (```) shows a copy button that copies the content (inner text only, no backticks or fences) to the clipboard.
 
 - 2026-10-07 — Outline: a file with two or more `#` or `## ` headings shows a chevron in the sidebar; expand it for a flattened table of contents (H2s indented) and click a heading to focus the editor on just that section (an H1 includes its H2s). Editing the focused section still saves the whole file; click the file name to see all of it again.

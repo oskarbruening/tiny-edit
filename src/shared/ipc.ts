@@ -18,6 +18,8 @@ export const CHANNELS = {
   filesCopyPath: "files:copyPath",
   /** R→M: write arbitrary text to the system clipboard (editor copy buttons). */
   clipboardWrite: "clipboard:write",
+  /** R→M: open an http(s)/mailto URL in the default browser (editor link icons / Cmd+click). */
+  shellOpenExternal: "shell:openExternal",
   /** M→R: files were added to the list (drop, Cmd+N, Finder open). */
   filesOpened: "files:opened",
   /** M→R: the window is closing; save everything, then answer with renderer:flushed. */
@@ -79,6 +81,8 @@ export type Api = {
   copyPath(path: string): Promise<void>;
   /** Writes arbitrary text to the clipboard (inline-code / code-block copy buttons). */
   copyText(text: string): Promise<void>;
+  /** Opens an allow-listed URL (http/https/mailto) in the default browser; rejects anything else. */
+  openExternal(url: string): Promise<void>;
   /** Native context menu for a listed file; its choices come back as menu actions. */
   showFileMenu(path: string): Promise<void>;
   /** Removes a file from the list (disk untouched); resolves to the new state. */
@@ -138,6 +142,7 @@ export const API_KEYS = [
   "revealFile",
   "copyPath",
   "copyText",
+  "openExternal",
   "pathForFile",
   "onFilesOpened",
   "onFlushRequest",

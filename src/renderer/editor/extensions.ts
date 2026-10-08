@@ -4,6 +4,7 @@ import { bracketMatching, indentUnit } from "@codemirror/language";
 import { search, searchKeymap } from "@codemirror/search";
 import { EditorState, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, scrollPastEnd } from "@codemirror/view";
+import { codeBlockBackground } from "./codeblock";
 import { insertTwoSpaces, outdent } from "./commands";
 import { codeLanguages, genericLanguage } from "./languages";
 import { rainbowBrackets } from "./rainbow";
@@ -35,6 +36,7 @@ export function editorExtensions(extra: readonly Extension[] = []): Extension[] 
       defaultCodeLanguage: genericLanguage,
       extensions: [markdownTagExtension],
     }),
+    codeBlockBackground,
     highlighting,
     rainbowBrackets,
     editorTheme,
