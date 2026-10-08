@@ -411,3 +411,69 @@ html.sidebar-hidden .sidebar {
 .te-bracket-3 {
   color: var(--te-syntax-bracket-3);
 }
+
+/* Copy buttons for inline code (`…`) and fenced code blocks (```), revealed on hover. */
+.te-copy {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  margin: 0;
+  border: 1px solid var(--te-line);
+  border-radius: var(--te-radius-sm);
+  background: var(--te-card);
+  color: var(--te-muted);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.te-copy svg {
+  display: block;
+}
+.te-copy:hover {
+  color: var(--te-ink);
+}
+.te-copy.is-copied {
+  color: var(--te-primary);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Inline: a zero-size anchor at the end of the span; the button floats over what follows (no reflow). */
+.te-copy-anchor {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  vertical-align: baseline;
+}
+.te-copy-inline {
+  top: -0.95em;
+  left: 2px;
+}
+.cm-line:hover .te-copy-inline,
+.te-copy-inline:hover {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Block: pinned to the top-right corner of the opening fence line (full content width). */
+.cm-line.te-copyblock {
+  position: relative;
+}
+.te-copy-block {
+  top: 3px;
+  right: 10px;
+}
+.te-copy-block.is-visible,
+.te-copy-block:hover {
+  opacity: 1;
+  pointer-events: auto;
+}

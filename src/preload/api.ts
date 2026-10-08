@@ -37,6 +37,7 @@ export function createApi(deps: PreloadDeps): Api {
     addFiles: (paths) => call(CHANNELS.filesAdd, paths),
     revealFile: (path) => call(CHANNELS.filesReveal, path),
     copyPath: (path) => call(CHANNELS.filesCopyPath, path),
+    copyText: (text) => call(CHANNELS.clipboardWrite, text),
     pathForFile: (file) => {
       try {
         return deps.pathForFile(file);

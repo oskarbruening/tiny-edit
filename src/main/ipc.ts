@@ -130,6 +130,11 @@ export function registerIpc(deps: IpcDeps): void {
     clipboard.writeText(listedPath(raw, CHANNELS.filesCopyPath));
   });
 
+  guard(CHANNELS.clipboardWrite, (_event, raw) => {
+    if (typeof raw !== "string") throw new IpcError("clipboard:write: text must be a string");
+    clipboard.writeText(raw);
+  });
+
   guard(CHANNELS.rendererFlushed, (event) => {
     deps.onRendererFlushed?.(event.sender.id);
   });
