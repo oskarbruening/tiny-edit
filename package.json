@@ -1,7 +1,7 @@
 {
   "name": "tiny-edit",
   "productName": "Tiny Edit",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A small, fast Markdown and plain-text editor. Highlights, never reformats.",
   "private": true,
   "license": "MIT",
@@ -24,7 +24,8 @@
     "test:e2e": "playwright test",
     "check": "npm run lint && npm run typecheck && npm run format:check && npm run test:coverage && npm run test:e2e",
     "install:app": "npm run package && sudo rm -rf \"/Applications/Tiny Edit.app\" && sudo ditto \"dist/mac-arm64/Tiny Edit.app\" \"/Applications/Tiny Edit.app\"",
-    "install:app:user": "npm run package && rm -rf \"$HOME/Applications/Tiny Edit.app\" && mkdir -p \"$HOME/Applications\" && ditto \"dist/mac-arm64/Tiny Edit.app\" \"$HOME/Applications/Tiny Edit.app\""
+    "install:app:user": "npm run package && rm -rf \"$HOME/Applications/Tiny Edit.app\" && mkdir -p \"$HOME/Applications\" && ditto \"dist/mac-arm64/Tiny Edit.app\" \"$HOME/Applications/Tiny Edit.app\"",
+    "install:cli": "node scripts/install-cli.mjs"
   },
   "devDependencies": {
     "@codemirror/commands": "^6.11.1",

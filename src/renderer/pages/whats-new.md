@@ -1,5 +1,12 @@
 # What's New in Tiny Edit
 
+## 0.3.1 — 2026-10-09
+
+- **No more blank screen on file switch.** Jumping from the bottom of a long file to a shorter one keeps you on the text instead of stranding you in empty space below it. If a file shrinks while you're reading it, the view stays on the content.
+- **Each section remembers its scroll.** When you use the outline to move between sections, returning to a section brings you back to where you were in it, not its top.
+- **Open from the command line.** Run `tiny-edit my-notes.md` in a terminal and the file opens here, added to the sidebar. (Set the command up once with the install step in the project README.)
+- **Open With Tiny Edit in Finder.** Right-click any file Tiny Edit can read — Markdown, text, JSON, YAML, CSV, HTML and many more — and Tiny Edit now appears under "Open With". It never takes over as the default for a type unless you choose it yourself.
+
 ## 0.3.0 — 2026-10-08
 
 - **Recently Closed.** The File menu now has a Recently Closed submenu with the last 50 files you removed from the sidebar, newest first. Choose one to reopen it. If two have the same name, their folder is shown so you can tell them apart. The list is kept across restarts.

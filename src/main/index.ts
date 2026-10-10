@@ -20,6 +20,7 @@ import { StateStore } from "./state";
 import { openPaths, registerIpc, trustedSenderFor } from "./ipc";
 import { fileContextTemplate, menuTemplate } from "./menu";
 import { OpenQueue } from "./openQueue";
+import { fileArgsFrom } from "./cliArgs";
 import { UserThemes } from "./themes";
 import { BUILTIN_THEMES, resolveTheme, type Appearance } from "../shared/themes";
 import { displayName, formatOf } from "../shared/text";
@@ -58,7 +59,14 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   const store = new StateStore({ filePath: join(app.getPath("userData"), "state.json"), fs });
 
-  app.on("second-instance", () => {
+  // Files named on our own command line (`tiny-edit file`, `open --args`, the bundle binary run
+  // directly). Finder/Dock opens arrive via the `open-file` handler above. Queued either way until
+  // the window is ready.
+  for (const path of fileArgsFrom(process.argv, process.cwd(), app.isPackaged)) openQueue.push(path);
+
+  app.on("second-instance", (_event, argv, workingDirectory) => {
+    // A second `tiny-edit file` relays its argv here; route the files through the same queue.
+    for (const path of fileArgsFrom(argv, workingDirectory, app.isPackaged)) openQueue.push(path);
     const [win] = BrowserWindow.getAllWindows();
     if (win) {
       if (win.isMinimized()) win.restore();

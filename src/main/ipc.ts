@@ -228,6 +228,11 @@ export async function openPaths(
   const patch: Partial<AppState> = {};
   if (fresh.length) patch.files = [...s.files, ...fresh];
   if (recentlyClosed.length !== s.recentlyClosed.length) patch.recentlyClosed = recentlyClosed;
+  // Make the first opened file active. The renderer also does this on `files:opened`, but a file
+  // opened at startup (CLI argv, Finder/Dock) is added before the renderer subscribes, so the push
+  // is lost; persisting activePath means it is the file shown when the renderer boots and reads state.
+  const firstOpened = result.added[0];
+  if (firstOpened && firstOpened !== s.activePath) patch.activePath = firstOpened;
   if (Object.keys(patch).length) deps.store.patch(patch);
   if (result.added.length) deps.send(CHANNELS.filesOpened, { paths: result.added });
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 — 2026-10-09
+
+- 2026-10-09 — Fix: switching from deep in a long file to a shorter one (or a file that shrank on disk) no longer leaves the editor scrolled into blank space below the text; the saved scroll position is clamped to the file's range, landing at the bottom of the shorter content. Each outline section now remembers its own scroll position for the session, so moving between sections returns you to where you last were in each instead of its start.
+
+- 2026-10-09 — Open from the command line and Finder: `tiny-edit file.md` (install the `tiny-edit` command with `npm run install:cli`) opens files in the running app, adding each to the sidebar and selecting the first. Finder's right-click "Open With" and "Get Info → Open with" now list Tiny Edit for every format it reads (Markdown, text, JSON/YAML/TOML, CSV, XML, HTML/CSS and common source code), not just Markdown and plain text.
+
 ## 0.3.0 — 2026-10-08
 
 - 2026-10-08 — File menu: a "Recently Closed" submenu lists the last 50 files removed from the sidebar, most recent first. Pick one to reopen it (it then leaves the list). Same-named files from different folders show their folder so they're easy to tell apart. The list is remembered across restarts.

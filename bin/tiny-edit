@@ -1,0 +1,24 @@
+#!/bin/sh
+# tiny-edit — open files in Tiny Edit from the command line.
+#
+#   tiny-edit [file ...]
+#
+# Hands the files to the installed Tiny Edit via LaunchServices, which starts the app (or focuses
+# the running one) and adds each file to the sidebar. `open` resolves relative paths against the
+# current directory. Install onto your PATH with `npm run install:cli`.
+set -eu
+
+BUNDLE_ID="com.peleusx.tiny-edit"
+APP_NAME="Tiny Edit"
+
+case "${1:-}" in
+  -h | --help)
+    echo "Usage: tiny-edit [file ...]"
+    echo "Opens the given files in $APP_NAME (each added to its sidebar)."
+    echo "With no files, just launches or focuses $APP_NAME."
+    exit 0
+    ;;
+esac
+
+# Prefer the stable bundle id; fall back to the display name if LaunchServices has not indexed it.
+open -b "$BUNDLE_ID" "$@" 2>/dev/null || open -a "$APP_NAME" "$@"

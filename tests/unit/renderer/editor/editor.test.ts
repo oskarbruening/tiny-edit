@@ -244,6 +244,44 @@ describe("Editor", () => {
     expect(editor.scopeOf("/b.md")).toBeNull();
   });
 
+  it("clamps a restored scroll past a shorter file's end to its bottom, never into blank space", () => {
+    const { editor } = make();
+    editors.push(editor);
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      cb(0);
+      return 1;
+    });
+    const dom = editor.view.scrollDOM;
+    // Simulate layout: 300px of content in a 100px viewport → max scroll 200.
+    Object.defineProperty(dom, "clientHeight", { configurable: true, get: () => 100 });
+    Object.defineProperty(dom, "scrollHeight", { configurable: true, get: () => 300 });
+    editor.open("/short.md", "x", { anchor: 0, head: 0, scrollTop: 5000 }); // offset saved from a long file
+    expect(dom.scrollTop).toBe(200);
+    raf.mockRestore();
+  });
+
+  it("remembers each section's scroll offset and restores it when re-entering via the outline", () => {
+    const { editor } = make();
+    editors.push(editor);
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      cb(0);
+      return 1;
+    });
+    const text = "# A\n" + "a\n".repeat(20) + "# B\n" + "b\n".repeat(20);
+    const bStart = text.indexOf("# B");
+    editor.open("/doc.md", text, { anchor: 0, head: 0, scrollTop: 0 });
+    editor.applyScope("/doc.md", { from: 0, to: bStart }); // enter section A
+    editor.view.scrollDOM.scrollTop = 42; // scroll within A
+    editor.applyScope("/doc.md", { from: bStart, to: text.length }); // jump to B (A's 42 remembered)
+    editor.view.scrollDOM.scrollTop = 7; // scroll within B
+    editor.applyScope("/doc.md", { from: 0, to: bStart }); // back to A → its own offset, not the start
+    expect(editor.view.scrollDOM.scrollTop).toBe(42);
+    editor.applyScope("/doc.md", { from: bStart, to: text.length }); // back to B
+    expect(editor.view.scrollDOM.scrollTop).toBe(7);
+    editor.close("/doc.md"); // closing forgets the section offsets
+    raf.mockRestore();
+  });
+
   it("does not steal focus from another form control when a file finishes opening", () => {
     vi.useFakeTimers();
     const host = document.createElement("div");
