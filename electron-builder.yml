@@ -14,12 +14,58 @@ mac:
   target:
     - target: dir
       arch: [arm64]
+  # Keep in sync with ACCEPTED_EXTENSIONS in src/shared/text.ts. role: Editor only adds Tiny Edit
+  # to Finder's "Open With" list; it never steals an existing default handler.
   fileAssociations:
-    - ext: [md, markdown]
+    - ext: [md, markdown, mdx]
       name: Markdown
       role: Editor
-    - ext: [txt, text]
+    - ext: [txt, text, log, rst, adoc, org]
       name: Plain Text
+      role: Editor
+    - ext: [json, jsonc, json5, yaml, yml, toml, ini, cfg, conf, env, properties, csv, tsv, xml, plist]
+      name: Data or Config File
+      role: Editor
+    - ext: [html, htm, css, scss, svg]
+      name: Web File
+      role: Editor
+    - ext:
+        [
+          js,
+          mjs,
+          cjs,
+          jsx,
+          ts,
+          tsx,
+          py,
+          sh,
+          bash,
+          zsh,
+          fish,
+          sql,
+          go,
+          rs,
+          rb,
+          php,
+          java,
+          kt,
+          swift,
+          c,
+          h,
+          cpp,
+          hpp,
+          cs,
+          lua,
+          r,
+          pl,
+          ps1,
+          bat,
+          diff,
+          patch,
+          tex,
+          bib,
+        ]
+      name: Source Code File
       role: Editor
 # Fuses flipped only in the packaged app; the dev/E2E build keeps Node CLI inspect on for Playwright.
 electronFuses:

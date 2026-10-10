@@ -88,6 +88,29 @@ test("files flow through window.api: add, read, write with guard, conflict, crea
   }
 });
 
+test("a file named on the command line opens in the sidebar and becomes active", async () => {
+  const work = await mkdtemp(join(tmpdir(), "tiny-edit-cli-e2e-"));
+  try {
+    const md = join(work, "from-cli.md");
+    await writeFile(md, "# From the command line\n");
+
+    const { app, close } = await launchApp(undefined, [md]);
+    try {
+      const page = await app.firstWindow();
+      await page.waitForSelector("#app");
+      // The argv path is queued before ready and drained once the renderer attaches.
+      await page.waitForSelector(`.sidebar__item[data-path="${md}"]`);
+      const files = await page.evaluate(async () => (await window.api.getState()).files.map((f) => f.path));
+      expect(files).toEqual([md]);
+      await expect(page.locator(`.sidebar__item.is-active[data-path="${md}"]`)).toHaveCount(1);
+    } finally {
+      await close();
+    }
+  } finally {
+    await rm(work, { recursive: true, force: true });
+  }
+});
+
 test("the file list survives a relaunch", async () => {
   const work = await mkdtemp(join(tmpdir(), "tiny-edit-files-e2e-"));
   const userData = await mkdtemp(join(tmpdir(), "tiny-edit-files-ud-"));

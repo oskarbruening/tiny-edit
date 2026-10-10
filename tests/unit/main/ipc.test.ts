@@ -498,6 +498,22 @@ describe("openPaths", () => {
     }
   });
 
+  it("makes the first opened file active (so a startup/Finder open is shown after boot)", async () => {
+    const d = await mkdtemp(join(tmpdir(), "tiny-edit-open-"));
+    try {
+      const a = join(d, "a.md");
+      const b = join(d, "b.md");
+      fs.writeFileSync(a, "a");
+      fs.writeFileSync(b, "b");
+      const st = new StateStore({ filePath: join(d, "state.json"), fs, onError: () => undefined });
+      st.load();
+      await openPaths([a, b], { files: new Files(fs), store: st, send: vi.fn() });
+      expect(st.get().activePath).toBe(a);
+    } finally {
+      await rm(d, { recursive: true, force: true });
+    }
+  });
+
   it("drops a reopened path from recentlyClosed, and drops a dead entry that was clicked", async () => {
     const d = await mkdtemp(join(tmpdir(), "tiny-edit-open-"));
     try {
