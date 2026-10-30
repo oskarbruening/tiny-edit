@@ -22,24 +22,38 @@ export const editorTheme = EditorView.theme({
   // Fenced code blocks: a subtle inset panel (edge to edge bar a small side margin) with a border.
   // Horizontal margin + reduced padding keep the text at the same x as ordinary lines; no vertical
   // margin, so consecutive block lines abut into one continuous panel.
+  //
+  // The panel is painted by a `::before` pseudo-element at a negative z-index, not by the line's own
+  // background: `drawSelection` draws the selection in a layer *behind* the content (`.cm-selectionLayer`,
+  // z-index -1 - n inside the `.cm-scroller` stacking context), so an opaque line background would
+  // cover it and selecting text inside a block would show no highlight. The pseudo-element sits in
+  // that same stacking context, below every CodeMirror layer; the line text paints above both.
   ".cm-line.te-codeblock-line": {
-    backgroundColor: "var(--te-surface-container)",
+    position: "relative",
     margin: "0 8px",
     padding: "0 7px",
+  },
+  ".cm-line.te-codeblock-line::before": {
+    content: '""',
+    position: "absolute",
+    inset: "0",
+    zIndex: "-10",
+    pointerEvents: "none",
+    backgroundColor: "var(--te-surface-container)",
     borderLeft: "1px solid var(--te-line)",
     borderRight: "1px solid var(--te-line)",
   },
-  ".cm-line.te-codeblock-first": {
+  ".cm-line.te-codeblock-first": { paddingTop: "2px" },
+  ".cm-line.te-codeblock-first::before": {
     borderTop: "1px solid var(--te-line)",
     borderTopLeftRadius: "var(--te-radius-sm)",
     borderTopRightRadius: "var(--te-radius-sm)",
-    paddingTop: "2px",
   },
-  ".cm-line.te-codeblock-last": {
+  ".cm-line.te-codeblock-last": { paddingBottom: "2px" },
+  ".cm-line.te-codeblock-last::before": {
     borderBottom: "1px solid var(--te-line)",
     borderBottomLeftRadius: "var(--te-radius-sm)",
     borderBottomRightRadius: "var(--te-radius-sm)",
-    paddingBottom: "2px",
   },
   "&.cm-focused": { outline: "none" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--te-ink)" },

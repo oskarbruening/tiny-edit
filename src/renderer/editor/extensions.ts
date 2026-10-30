@@ -20,6 +20,7 @@ import {
 } from "@codemirror/view";
 import { codeBlockBackground } from "./codeblock";
 import { insertTwoSpaces, outdent } from "./commands";
+import { autoCloseFence } from "./fence";
 import { codeLanguages, genericLanguage } from "./languages";
 import { rainbowBrackets } from "./rainbow";
 import { scopeExtension } from "./scope";
@@ -80,6 +81,8 @@ export function editorExtensions(extra: readonly Extension[] = [], language?: Ex
       { key: "Enter", run: insertNewlineKeepIndent, shift: insertNewlineKeepIndent },
       { key: "Tab", run: insertTwoSpaces, shift: outdent },
     ]),
+    // The third and last convenience: typing ``` on a line of its own adds the closing fence.
+    autoCloseFence,
     indentUnit.of("  "),
     history(),
     drawSelection(),
