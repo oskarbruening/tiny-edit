@@ -54,9 +54,11 @@ test("settings: syntax highlighting off makes all text one colour, keeps code-bl
     // The code-block panel keeps its background and border, and hover still reveals the copy buttons.
     const prose = content.locator(".cm-line", { hasText: "Some" });
     const panel = content.locator(".te-codeblock-first");
-    const bg = (loc: typeof prose) => loc.evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(await bg(panel)).not.toBe(await bg(prose));
-    expect(await panel.evaluate((el) => getComputedStyle(el).borderTopStyle)).toBe("solid");
+    // The panel is painted by the line's ::before pseudo-element (behind the selection layer).
+    const bg = (loc: typeof prose, pseudo?: string) =>
+      loc.evaluate((el, p) => getComputedStyle(el, p ?? null).backgroundColor, pseudo);
+    expect(await bg(panel, "::before")).not.toBe(await bg(prose));
+    expect(await panel.evaluate((el) => getComputedStyle(el, "::before").borderTopStyle)).toBe("solid");
     await first.app.evaluate(({ clipboard: c }) => c.writeText("SENTINEL"));
     await content.locator(".cm-line", { hasText: "const s" }).hover();
     await content.locator(".te-copy-block").click();

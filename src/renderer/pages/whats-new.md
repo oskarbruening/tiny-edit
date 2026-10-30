@@ -1,5 +1,10 @@
 # What's New in Tiny Edit
 
+## 0.3.2 — 2026-10-30
+
+- **Code fences close themselves.** Type three backticks on an empty line and the closing fence appears on the line below. Keep typing to name the language, press Enter, and you're inside the block. Typing three backticks to close a block you opened by hand still works as before, and ⌘Z removes both fences.
+- **Selections show inside code blocks.** Selected text in a fenced code block is highlighted again instead of hiding behind the block's background.
+
 ## 0.3.1 — 2026-10-09
 
 - **No more blank screen on file switch.** Jumping from the bottom of a long file to a shorter one keeps you on the text instead of stranding you in empty space below it. If a file shrinks while you're reading it, the view stays on the content.

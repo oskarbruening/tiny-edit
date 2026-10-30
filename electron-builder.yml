@@ -12,7 +12,9 @@ mac:
   identity: "-" # ad-hoc signature for personal use; no notarisation
   hardenedRuntime: false
   target:
-    - target: dir
+    - target: dir # bare .app for `npm run install:app`
+      arch: [arm64]
+    - target: dmg # dist/Tiny Edit-<version>-arm64.dmg, see CLAUDE.md "DMG on every PR"
       arch: [arm64]
   # Keep in sync with ACCEPTED_EXTENSIONS in src/shared/text.ts. role: Editor only adds Tiny Edit
   # to Finder's "Open With" list; it never steals an existing default handler.
@@ -67,6 +69,8 @@ mac:
         ]
       name: Source Code File
       role: Editor
+dmg:
+  sign: false # ad-hoc identity: nothing to sign the image with; default layout (app + Applications link)
 # Fuses flipped only in the packaged app; the dev/E2E build keeps Node CLI inspect on for Playwright.
 electronFuses:
   runAsNode: false

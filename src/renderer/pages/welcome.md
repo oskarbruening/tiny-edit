@@ -10,6 +10,7 @@ A small, fast editor for plain-text and markdown files.
   - Markdown, plain text, JSON, YAML, CSV, HTML, source code and other UTF-8 text files open directly
 - Every change is autosaved so no save button
 - Pure text editing: no auto-correct, no smart quotes, no auto-closing brackets
+  - The only helpers: Tab inserts two spaces, Enter keeps the indentation, and three backticks add their closing fence
 - Basic markdown highlighting (disable in settings)
   - Quick copy buttons for `code spans` and code blocks (see below)
   - H1 and h2 headers (`#` and `##`) show up in the sidebar as a table-of-content

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 — 2026-10-30
+
+- 2026-10-30 — Editor: typing three backticks on a line of its own adds the closing fence on the line below; the caret stays after the opening fence so a language can be typed, and Enter lands inside the block. Typing three backticks inside a block that is still open just closes it, as before. Undo removes both fences.
+
+- 2026-10-30 — Fix: selecting text inside a fenced code block now shows the selection highlight; the block's panel background was painted over it.
+
 ## 0.3.1 — 2026-10-09
 
 - 2026-10-09 — Fix: switching from deep in a long file to a shorter one (or a file that shrank on disk) no longer leaves the editor scrolled into blank space below the text; the saved scroll position is clamped to the file's range, landing at the bottom of the shorter content. Each outline section now remembers its own scroll position for the session, so moving between sections returns you to where you last were in each instead of its start.
