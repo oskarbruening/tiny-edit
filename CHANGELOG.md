@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.2 — 2026-10-30
 
 - 2026-10-30 — Editor: typing three backticks on a line of its own adds the closing fence on the line below; the caret stays after the opening fence so a language can be typed, and Enter lands inside the block. Typing three backticks inside a block that is still open just closes it, as before. Undo removes both fences.
 
